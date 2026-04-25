@@ -474,6 +474,329 @@
         }
     });
 
+    /* ══════════════════════════════════════════════════════════
+     *  BATTLE SYSTEM + POKÉMON ROTATION (every 2 minutes)
+     * ══════════════════════════════════════════════════════════ */
+    let isThrowing = false;
+    let battleActive = false;
+
+    /* ── Spawn a brand-new Pokemon (not already on screen) ──── */
+    function spawnNewPokemon() {
+        const activeIds = new Set([
+            ...pokemons.map(p => p.id),
+            ...flyers.map(f => f.id)
+        ]);
+        const available = ALL_POKEMON_IDS.filter(id => !activeIds.has(id));
+        if (available.length === 0) return;
+        const newId = available[Math.floor(Math.random() * available.length)];
+        if (FLYING_IDS.has(newId)) {
+            flyers.push(new FlyingPokemon(newId));
+        } else {
+            pokemons.push(new Pokemon(newId));
+        }
+    }
+
+    /* ── Remove a random Pokemon with fade-out ─────────────── */
+    function retirePokemon() {
+        // Prefer ground Pokemon if there are some, else flyers
+        const allActive = [...pokemons, ...flyers].filter(p => p.state !== 'frozen');
+        if (allActive.length <= 2) return null; // keep at least 2
+        const victim = allActive[Math.floor(Math.random() * allActive.length)];
+        victim.el.style.transition = 'opacity 0.8s';
+        victim.el.style.opacity = '0';
+        setTimeout(() => {
+            victim.el.remove();
+            const gi = pokemons.indexOf(victim);
+            if (gi >= 0) pokemons.splice(gi, 1);
+            const fi = flyers.indexOf(victim);
+            if (fi >= 0) flyers.splice(fi, 1);
+        }, 800);
+        return victim;
+    }
+
+    /* ── Pick 2 Pokemon for battle ────────────────────────── */
+    function pickBattlePair() {
+        const all = [...pokemons, ...flyers].filter(p => p.state !== 'frozen');
+        if (all.length < 2) return null;
+        const shuffled = all.sort(() => Math.random() - 0.5);
+        return [shuffled[0], shuffled[1]];
+    }
+
+    /* ── Start a battle ───────────────────────────────────── */
+    function triggerBattle() {
+        if (battleActive || isThrowing) return;
+        const pair = pickBattlePair();
+        if (!pair) return;
+        const [pkA, pkB] = pair;
+
+        battleActive = true;
+        pkA.state = 'frozen';
+        pkB.state = 'frozen';
+
+        // Battle overlay
+        const overlay = document.createElement('div');
+        Object.assign(overlay.style, {
+            position: 'fixed', inset: '0', zIndex: '20000',
+            background: 'rgba(0,0,0,0)', pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        });
+        document.body.appendChild(overlay);
+
+        overlay.animate([
+            { background: 'rgba(0,0,0,0)' },
+            { background: 'rgba(0,0,0,0.75)' }
+        ], { duration: 400, fill: 'forwards' });
+
+        // Arena
+        const arena = document.createElement('div');
+        Object.assign(arena.style, {
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: '20px', transform: 'scale(0)'
+        });
+
+        const sideA = buildSide(pkA.id, 'left');
+        const sideB = buildSide(pkB.id, 'right');
+
+        const vs = document.createElement('div');
+        Object.assign(vs.style, {
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
+            fontSize: '48px', color: '#FFD700',
+            textShadow: '0 0 20px #FFD700, 0 0 40px #ff6e84, 0 4px 8px rgba(0,0,0,0.8)',
+            letterSpacing: '4px', transform: 'scale(0)'
+        });
+        vs.textContent = 'VS';
+
+        arena.appendChild(sideA.el);
+        arena.appendChild(vs);
+        arena.appendChild(sideB.el);
+        overlay.appendChild(arena);
+
+        setTimeout(() => {
+            arena.animate([
+                { transform: 'scale(0) rotate(-10deg)', opacity: 0 },
+                { transform: 'scale(1.1) rotate(2deg)', opacity: 1, offset: 0.6 },
+                { transform: 'scale(1) rotate(0)', opacity: 1 }
+            ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
+        }, 300);
+
+        setTimeout(() => {
+            vs.animate([
+                { transform: 'scale(0) rotate(-20deg)' },
+                { transform: 'scale(1.3) rotate(5deg)', offset: 0.5 },
+                { transform: 'scale(1) rotate(0)' }
+            ], { duration: 400, fill: 'forwards', easing: 'ease-out' });
+        }, 600);
+
+        setTimeout(() => runBattleRounds(overlay, sideA, sideB, pkA, pkB), 1200);
+    }
+
+    /* ── Build battle side panel ──────────────────────────── */
+    function buildSide(id, side) {
+        const el = document.createElement('div');
+        Object.assign(el.style, {
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: '8px', minWidth: '100px'
+        });
+        const img = document.createElement('img');
+        img.src = spriteURL(id);
+        img.draggable = false;
+        Object.assign(img.style, {
+            width: '96px', height: '96px', imageRendering: 'pixelated',
+            filter: 'drop-shadow(0 0 12px rgba(151,169,255,0.5))',
+            transform: side === 'right' ? 'scaleX(-1)' : 'scaleX(1)'
+        });
+        img.addEventListener('error', () => { img.src = staticURL(id); }, { once: true });
+
+        const hpWrap = document.createElement('div');
+        Object.assign(hpWrap.style, {
+            width: '90px', height: '8px', borderRadius: '4px',
+            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
+            overflow: 'hidden'
+        });
+        const hpBar = document.createElement('div');
+        Object.assign(hpBar.style, {
+            width: '100%', height: '100%', borderRadius: '4px',
+            background: 'linear-gradient(90deg, #4ECDC4, #44d62c)',
+            transition: 'width 0.4s ease, background 0.4s'
+        });
+        hpWrap.appendChild(hpBar);
+
+        const label = document.createElement('div');
+        Object.assign(label.style, {
+            fontSize: '10px', fontFamily: 'monospace', color: '#97a9ff',
+            textShadow: '0 0 6px #97a9ff', letterSpacing: '1px'
+        });
+        label.textContent = `#${id}`;
+
+        el.appendChild(img);
+        el.appendChild(hpWrap);
+        el.appendChild(label);
+        return { el, img, hpBar, hp: 100 };
+    }
+
+    /* ── Run battle rounds ────────────────────────────────── */
+    function runBattleRounds(overlay, sideA, sideB, pkA, pkB) {
+        const rounds = 3 + Math.floor(Math.random() * 3);
+        let round = 0;
+
+        function doRound() {
+            if (sideA.hp <= 0 || sideB.hp <= 0 || round >= rounds) {
+                if (sideA.hp === sideB.hp) {
+                    if (Math.random() < 0.5) sideA.hp = 0; else sideB.hp = 0;
+                }
+                endBattle(overlay, sideA, sideB, pkA, pkB, sideA.hp > sideB.hp);
+                return;
+            }
+            round++;
+            const atk = round % 2 === 1 ? sideA : sideB;
+            const def = round % 2 === 1 ? sideB : sideA;
+            const dmg = 15 + Math.floor(Math.random() * 25);
+            const dir = atk === sideA ? 1 : -1;
+
+            atk.img.animate([
+                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(0)` },
+                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(${dir * 30}px)`, offset: 0.3 },
+                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(0)` }
+            ], { duration: 300, easing: 'ease-in-out' });
+
+            setTimeout(() => {
+                def.img.animate([
+                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' },
+                    { filter: 'brightness(3) drop-shadow(0 0 20px #ff3030)', offset: 0.3 },
+                    { filter: 'brightness(0.5)', offset: 0.5 },
+                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' }
+                ], { duration: 400, easing: 'ease-out' });
+
+                const rect = def.img.getBoundingClientRect();
+                spawnHitSparks(rect.left + rect.width/2, rect.top + rect.height/2);
+
+                def.hp = Math.max(0, def.hp - dmg);
+                def.hpBar.style.width = def.hp + '%';
+                if (def.hp < 30) def.hpBar.style.background = 'linear-gradient(90deg, #ff3030, #ff6347)';
+                else if (def.hp < 60) def.hpBar.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+            }, 200);
+
+            setTimeout(doRound, 800);
+        }
+        doRound();
+    }
+
+    /* ── Hit sparks ───────────────────────────────────────── */
+    function spawnHitSparks(x, y) {
+        const colors = ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
+        for (let i = 0; i < 6; i++) {
+            const s = document.createElement('div');
+            const sz = rand(3, 6);
+            Object.assign(s.style, {
+                position: 'fixed', width: sz+'px', height: sz+'px', borderRadius: '50%',
+                background: pick(colors), left: x+'px', top: y+'px',
+                pointerEvents: 'none', zIndex: '20002',
+                boxShadow: `0 0 6px ${pick(colors)}`
+            });
+            document.body.appendChild(s);
+            const angle = (Math.PI*2/6)*i + rand(-0.3, 0.3);
+            const dist = rand(15, 40);
+            s.animate([
+                { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity: 0 }
+            ], { duration: 350, easing: 'ease-out', fill: 'forwards' }).onfinish = () => s.remove();
+        }
+    }
+
+    /* ── End battle ───────────────────────────────────────── */
+    function endBattle(overlay, sideA, sideB, pkA, pkB, aWins) {
+        const winner = aWins ? sideA : sideB;
+        const loser = aWins ? sideB : sideA;
+        const winPk = aWins ? pkA : pkB;
+        const losePk = aWins ? pkB : pkA;
+
+        loser.img.animate([
+            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(0)`, opacity: 1 },
+            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(30px) rotate(${rand(-20,20)}deg)`, opacity: 0 }
+        ], { duration: 500, fill: 'forwards', easing: 'ease-in' });
+
+        winner.img.animate([
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` },
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(-15px)`, offset: 0.4 },
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` }
+        ], { duration: 500, easing: 'ease-in-out', iterations: 2 });
+
+        // WIN text
+        const winText = document.createElement('div');
+        winText.textContent = 'WIN!';
+        Object.assign(winText.style, {
+            position: 'fixed', left: '50%', top: '38%',
+            transform: 'translate(-50%,-50%) scale(0)',
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
+            fontSize: '42px', color: '#4ECDC4',
+            textShadow: '0 0 15px #4ECDC4, 0 0 30px #44d62c, 0 4px 8px rgba(0,0,0,0.8)',
+            pointerEvents: 'none', zIndex: '20003', letterSpacing: '6px'
+        });
+        document.body.appendChild(winText);
+        winText.animate([
+            { transform: 'translate(-50%,-50%) scale(0)', opacity: 0 },
+            { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 1, offset: 0.4 },
+            { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }
+        ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
+
+        // Close overlay
+        setTimeout(() => {
+            overlay.animate([
+                { background: 'rgba(0,0,0,0.75)' },
+                { background: 'rgba(0,0,0,0)' }
+            ], { duration: 400, fill: 'forwards' });
+            winText.animate([
+                { opacity: 1 }, { opacity: 0 }
+            ], { duration: 400, fill: 'forwards' }).onfinish = () => winText.remove();
+
+            setTimeout(() => {
+                overlay.remove();
+
+                // Winner resumes
+                const isFlyer = flyers.includes(winPk);
+                if (isFlyer) {
+                    winPk.state = undefined;
+                } else {
+                    winPk.state = 'walk';
+                    winPk.vx = rand(MIN_SPEED, MAX_SPEED) * (winPk.facingRight ? 1 : -1);
+                }
+                winPk.el.style.opacity = '1';
+                winPk.el.style.transition = 'none';
+                winPk.img.style.filter = 'drop-shadow(0 0 12px #4ECDC4) brightness(1.2)';
+                setTimeout(() => {
+                    winPk.img.style.transition = 'filter 2s';
+                    winPk.img.style.filter = '';
+                }, 3000);
+
+                // Loser disappears + replaced with new Pokemon
+                losePk.el.style.transition = 'opacity 0.5s';
+                losePk.el.style.opacity = '0';
+                setTimeout(() => {
+                    losePk.el.remove();
+                    const gi = pokemons.indexOf(losePk);
+                    if (gi >= 0) pokemons.splice(gi, 1);
+                    const fi = flyers.indexOf(losePk);
+                    if (fi >= 0) flyers.splice(fi, 1);
+
+                    // Spawn replacement
+                    spawnNewPokemon();
+                }, 600);
+
+                // Also randomly retire 0-1 more and spawn replacements
+                if (Math.random() < 0.5) {
+                    setTimeout(() => {
+                        retirePokemon();
+                        setTimeout(spawnNewPokemon, 1000);
+                    }, 1500);
+                }
+
+                battleActive = false;
+            }, 400);
+        }, 1800);
+    }
+
+    /* ── Timer: trigger battle every 2 minutes ─────────────── */
+    setInterval(triggerBattle, 2 * 60 * 1000);
 
 
     /* ══════════════════════════════════════════════════════════
@@ -483,7 +806,6 @@
     const CATCH_RATE = 0.35;          // 35% chance to catch
     const HIT_RADIUS = 90;           // px — how close click must be to a Pokémon
     const WOBBLE_COUNT = 5;
-    let isThrowing = false;          // prevent spam
 
     /* ── Pokéball SVG (larger, for throwing) ───────────────── */
     function ballSVG(size) {
