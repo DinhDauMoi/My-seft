@@ -420,15 +420,29 @@
     }
 
     /* ── Release a Pokemon ──────────────────────────────────── */
+    let battleMode = false;
+    const battleSlots = []; // max 2
+
     function releasePokemon(id, name) {
         const wild = isFlying(id) ? new WildFlyer(id, name) : new WildGround(id, name);
         releasedPokemon.push(wild);
+
+        // Track for battle: only non-dead wild pokemon
+        if (!battleMode) {
+            battleSlots.push(wild);
+            if (battleSlots.length === 2) {
+                // Two Pokemon released — initiate battle!
+                battleMode = true;
+                setTimeout(() => startRanchBattle(battleSlots[0], battleSlots[1]), 600);
+            }
+        }
     }
 
     /* ── Animation loop for released Pokemon ────────────────── */
     function wildLoop() {
         for (let i = releasedPokemon.length - 1; i >= 0; i--) {
-            releasedPokemon[i].update();
+            if (releasedPokemon[i].frozen) { /* skip update while frozen */ }
+            else releasedPokemon[i].update();
             if (releasedPokemon[i].dead && releasedPokemon[i].life < -60) {
                 releasedPokemon.splice(i, 1);
             }
@@ -436,6 +450,316 @@
         requestAnimationFrame(wildLoop);
     }
     requestAnimationFrame(wildLoop);
+
+    /* ══════════════════════════════════════════════════════════
+     *  RANCH BATTLE SYSTEM
+     * ══════════════════════════════════════════════════════════ */
+    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+    function startRanchBattle(pkA, pkB) {
+        // Freeze both
+        pkA.frozen = true;
+        pkB.frozen = true;
+
+        // Make them charge toward center
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const targetAx = centerX - 80;
+        const targetBx = centerX + 20;
+
+        // Animate sprites moving toward center
+        pkA.el.style.transition = 'transform 0.5s ease-in';
+        pkB.el.style.transition = 'transform 0.5s ease-in';
+        pkA.facingRight = true;
+        pkB.facingRight = false;
+        pkA.el.style.transform = `translate3d(${targetAx}px,${centerY}px,0) scaleX(1)`;
+        pkB.el.style.transform = `translate3d(${targetBx}px,${centerY}px,0) scaleX(-1)`;
+
+        // After they meet — show battle overlay
+        setTimeout(() => {
+            // Hide the wild sprites temporarily
+            pkA.el.style.opacity = '0';
+            pkB.el.style.opacity = '0';
+            showBattleOverlay(pkA, pkB);
+        }, 600);
+    }
+
+    /* ── Battle Overlay ───────────────────────────────────── */
+    function showBattleOverlay(pkA, pkB) {
+        const overlay = document.createElement('div');
+        Object.assign(overlay.style, {
+            position: 'fixed', inset: '0', zIndex: '20000',
+            background: 'rgba(0,0,0,0)', pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        });
+        document.body.appendChild(overlay);
+
+        overlay.animate([
+            { background: 'rgba(0,0,0,0)' },
+            { background: 'rgba(0,0,0,0.8)' }
+        ], { duration: 400, fill: 'forwards' });
+
+        // Arena
+        const arena = document.createElement('div');
+        Object.assign(arena.style, {
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: '24px', transform: 'scale(0)'
+        });
+
+        const sideA = buildBattleSide(pkA.id, 'left');
+        const sideB = buildBattleSide(pkB.id, 'right');
+
+        const vsText = document.createElement('div');
+        Object.assign(vsText.style, {
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
+            fontSize: '52px', color: '#FFD700',
+            textShadow: '0 0 20px #FFD700, 0 0 40px #ff6e84, 0 4px 8px rgba(0,0,0,0.8)',
+            letterSpacing: '6px', transform: 'scale(0)'
+        });
+        vsText.textContent = 'VS';
+
+        arena.appendChild(sideA.el);
+        arena.appendChild(vsText);
+        arena.appendChild(sideB.el);
+        overlay.appendChild(arena);
+
+        // Animate arena in
+        setTimeout(() => {
+            arena.animate([
+                { transform: 'scale(0) rotate(-10deg)', opacity: 0 },
+                { transform: 'scale(1.1) rotate(2deg)', opacity: 1, offset: 0.6 },
+                { transform: 'scale(1) rotate(0)', opacity: 1 }
+            ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
+        }, 200);
+
+        setTimeout(() => {
+            vsText.animate([
+                { transform: 'scale(0) rotate(-20deg)' },
+                { transform: 'scale(1.3) rotate(5deg)', offset: 0.5 },
+                { transform: 'scale(1) rotate(0)' }
+            ], { duration: 400, fill: 'forwards', easing: 'ease-out' });
+        }, 500);
+
+        // Start fighting after intro
+        setTimeout(() => runRounds(overlay, sideA, sideB, pkA, pkB), 1200);
+    }
+
+    /* ── Build battle side panel ──────────────────────────── */
+    function buildBattleSide(id, side) {
+        const el = document.createElement('div');
+        Object.assign(el.style, {
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: '10px', minWidth: '110px'
+        });
+
+        const img = document.createElement('img');
+        img.src = spriteURL(id);
+        img.draggable = false;
+        Object.assign(img.style, {
+            width: '96px', height: '96px', imageRendering: 'pixelated',
+            filter: 'drop-shadow(0 0 12px rgba(151,169,255,0.5))',
+            transform: side === 'right' ? 'scaleX(-1)' : 'scaleX(1)'
+        });
+        img.addEventListener('error', () => { img.src = staticURL(id); }, { once: true });
+
+        const hpWrap = document.createElement('div');
+        Object.assign(hpWrap.style, {
+            width: '96px', height: '10px', borderRadius: '5px',
+            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+            overflow: 'hidden'
+        });
+        const hpBar = document.createElement('div');
+        Object.assign(hpBar.style, {
+            width: '100%', height: '100%', borderRadius: '5px',
+            background: 'linear-gradient(90deg, #4ECDC4, #44d62c)',
+            transition: 'width 0.4s ease, background 0.4s'
+        });
+        hpWrap.appendChild(hpBar);
+
+        const label = document.createElement('div');
+        Object.assign(label.style, {
+            fontSize: '11px', fontFamily: "'Space Grotesk', monospace", color: '#97a9ff',
+            textShadow: '0 0 6px #97a9ff', letterSpacing: '2px', fontWeight: '700'
+        });
+        label.textContent = `#${String(id).padStart(3,'0')}`;
+
+        el.appendChild(img);
+        el.appendChild(hpWrap);
+        el.appendChild(label);
+
+        return { el, img, hpBar, hp: 100 };
+    }
+
+    /* ── Run battle rounds ────────────────────────────────── */
+    function runRounds(overlay, sideA, sideB, pkA, pkB) {
+        const totalRounds = 3 + Math.floor(Math.random() * 3);
+        let round = 0;
+
+        function doRound() {
+            if (sideA.hp <= 0 || sideB.hp <= 0 || round >= totalRounds) {
+                if (sideA.hp === sideB.hp) {
+                    if (Math.random() < 0.5) sideA.hp = 0; else sideB.hp = 0;
+                }
+                finishBattle(overlay, sideA, sideB, pkA, pkB, sideA.hp > sideB.hp);
+                return;
+            }
+            round++;
+
+            const attacker = round % 2 === 1 ? sideA : sideB;
+            const defender = round % 2 === 1 ? sideB : sideA;
+            const dmg = 15 + Math.floor(Math.random() * 25);
+            const dir = attacker === sideA ? 1 : -1;
+
+            // Lunge animation
+            attacker.img.animate([
+                { transform: `scaleX(${attacker === sideB ? -1 : 1}) translateX(0)` },
+                { transform: `scaleX(${attacker === sideB ? -1 : 1}) translateX(${dir * 35}px)`, offset: 0.3 },
+                { transform: `scaleX(${attacker === sideB ? -1 : 1}) translateX(0)` }
+            ], { duration: 300, easing: 'ease-in-out' });
+
+            // Hit flash
+            setTimeout(() => {
+                defender.img.animate([
+                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' },
+                    { filter: 'brightness(3) drop-shadow(0 0 20px #ff3030)', offset: 0.3 },
+                    { filter: 'brightness(0.5)', offset: 0.5 },
+                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' }
+                ], { duration: 400, easing: 'ease-out' });
+
+                // Hit sparks
+                const rect = defender.img.getBoundingClientRect();
+                spawnBattleSparks(rect.left + rect.width/2, rect.top + rect.height/2);
+
+                defender.hp = Math.max(0, defender.hp - dmg);
+                defender.hpBar.style.width = defender.hp + '%';
+                if (defender.hp < 30) {
+                    defender.hpBar.style.background = 'linear-gradient(90deg, #ff3030, #ff6347)';
+                } else if (defender.hp < 60) {
+                    defender.hpBar.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+                }
+            }, 200);
+
+            setTimeout(doRound, 800);
+        }
+        doRound();
+    }
+
+    /* ── Battle sparks ────────────────────────────────────── */
+    function spawnBattleSparks(x, y) {
+        const colors = ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
+        for (let i = 0; i < 6; i++) {
+            const s = document.createElement('div');
+            const sz = rand(3, 6);
+            Object.assign(s.style, {
+                position: 'fixed', width: sz+'px', height: sz+'px', borderRadius: '50%',
+                background: pick(colors), left: x+'px', top: y+'px',
+                pointerEvents: 'none', zIndex: '20002',
+                boxShadow: `0 0 6px ${pick(colors)}`
+            });
+            document.body.appendChild(s);
+            const angle = (Math.PI*2/6)*i + rand(-0.3, 0.3);
+            const dist = rand(15, 40);
+            s.animate([
+                { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity: 0 }
+            ], { duration: 350, easing: 'ease-out', fill: 'forwards' }).onfinish = () => s.remove();
+        }
+    }
+
+    /* ── Finish battle ────────────────────────────────────── */
+    function finishBattle(overlay, sideA, sideB, pkA, pkB, aWins) {
+        const winner = aWins ? sideA : sideB;
+        const loser = aWins ? sideB : sideA;
+        const winPk = aWins ? pkA : pkB;
+        const losePk = aWins ? pkB : pkA;
+
+        // Loser falls
+        loser.img.animate([
+            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(0)`, opacity: 1 },
+            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(30px) rotate(${rand(-20,20)}deg)`, opacity: 0 }
+        ], { duration: 500, fill: 'forwards', easing: 'ease-in' });
+
+        // Winner bounces
+        winner.img.animate([
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` },
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(-15px)`, offset: 0.4 },
+            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` }
+        ], { duration: 500, easing: 'ease-in-out', iterations: 2 });
+
+        // WIN! text
+        const winText = document.createElement('div');
+        winText.textContent = 'WIN!';
+        Object.assign(winText.style, {
+            position: 'fixed', left: '50%', top: '38%',
+            transform: 'translate(-50%,-50%) scale(0)',
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
+            fontSize: '48px', color: '#4ECDC4',
+            textShadow: '0 0 15px #4ECDC4, 0 0 30px #44d62c, 0 4px 8px rgba(0,0,0,0.8)',
+            pointerEvents: 'none', zIndex: '20003', letterSpacing: '8px'
+        });
+        document.body.appendChild(winText);
+        winText.animate([
+            { transform: 'translate(-50%,-50%) scale(0)', opacity: 0 },
+            { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 1, offset: 0.4 },
+            { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }
+        ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
+
+        // Stars burst around winner
+        const colors = ['#FFD700', '#FFF', '#4ECDC4', '#A78BFA', '#ff6e84'];
+        for (let i = 0; i < 10; i++) {
+            const star = document.createElement('div');
+            star.textContent = '✦';
+            Object.assign(star.style, {
+                position: 'fixed', left: '50%', top: '50%',
+                fontSize: rand(12,20)+'px', color: pick(colors),
+                textShadow: `0 0 8px ${pick(colors)}`,
+                pointerEvents: 'none', zIndex: '20004'
+            });
+            document.body.appendChild(star);
+            const angle = (Math.PI*2/10)*i;
+            const dist = rand(50,100);
+            star.animate([
+                { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity: 0 }
+            ], { duration: 800, easing: 'ease-out', fill: 'forwards' }).onfinish = () => star.remove();
+        }
+
+        // Close after delay
+        setTimeout(() => {
+            overlay.animate([
+                { background: 'rgba(0,0,0,0.8)' },
+                { background: 'rgba(0,0,0,0)' }
+            ], { duration: 400, fill: 'forwards' });
+            winText.animate([
+                { opacity: 1 }, { opacity: 0 }
+            ], { duration: 400, fill: 'forwards' }).onfinish = () => winText.remove();
+
+            setTimeout(() => {
+                overlay.remove();
+
+                // Winner — keep alive with glow, resume movement
+                winPk.frozen = false;
+                winPk.life = 15 * 60; // give more time
+                winPk.el.style.opacity = '1';
+                winPk.el.style.transition = 'none';
+                winPk.img.style.filter = 'drop-shadow(0 0 14px #4ECDC4) brightness(1.2)';
+                setTimeout(() => {
+                    winPk.img.style.transition = 'filter 2s';
+                    winPk.img.style.filter = '';
+                }, 3000);
+
+                // Loser — remove instantly
+                losePk.dead = true;
+                losePk.life = -100;
+                losePk.el.style.opacity = '0';
+                setTimeout(() => losePk.el.remove(), 500);
+
+                // Reset battle slots
+                battleSlots.length = 0;
+                battleMode = false;
+            }, 400);
+        }, 2000);
+    }
 
     /* ── Inject aura keyframes if not present ───────────────── */
     if (!document.querySelector('#ranch-wild-styles')) {
@@ -462,3 +786,4 @@
     }
 
 })();
+
