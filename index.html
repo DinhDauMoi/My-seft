@@ -1,159 +1,309 @@
 <!DOCTYPE html>
-<html lang="vi">
-
+<html class="dark" lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Vinh | Personal Workspace</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&family=Manrope:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    
+    <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed-dim": "#dab4ff",
+                        "primary-container": "#859aff",
+                        "on-surface-variant": "#a9abb3",
+                        "secondary": "#bf81ff",
+                        "tertiary": "#a1faff",
+                        "tertiary-fixed-dim": "#00e5ee",
+                        "on-surface": "#ecedf6",
+                        "on-secondary": "#32005c",
+                        "surface-tint": "#97a9ff",
+                        "on-secondary-container": "#f0dcff",
+                        "on-secondary-fixed": "#4e008a",
+                        "error-dim": "#d73357",
+                        "primary-fixed-dim": "#718bff",
+                        "on-primary": "#002283",
+                        "on-background": "#ecedf6",
+                        "surface-bright": "#282c36",
+                        "inverse-on-surface": "#52555c",
+                        "background": "#0b0e14",
+                        "surface-container-lowest": "#000000",
+                        "tertiary-fixed": "#00f4fe",
+                        "surface-variant": "#22262f",
+                        "primary": "#97a9ff",
+                        "surface-container": "#161a21",
+                        "surface-container-highest": "#22262f",
+                        "outline": "#73757d",
+                        "on-tertiary": "#006165",
+                        "on-tertiary-fixed": "#004346",
+                        "error-container": "#a70138",
+                        "surface-container-low": "#10131a",
+                        "primary-fixed": "#859aff",
+                        "secondary-dim": "#9c42f4",
+                        "on-error-container": "#ffb2b9",
+                        "on-secondary-fixed-variant": "#7500cc",
+                        "on-primary-fixed-variant": "#00207e",
+                        "tertiary-container": "#00f4fe",
+                        "tertiary-dim": "#00e5ee",
+                        "on-primary-container": "#001867",
+                        "inverse-primary": "#134af1",
+                        "surface-dim": "#0b0e14",
+                        "on-error": "#490013",
+                        "inverse-surface": "#f9f9ff",
+                        "surface-container-high": "#1c2028",
+                        "outline-variant": "#45484f",
+                        "surface": "#0b0e14",
+                        "on-tertiary-container": "#00575b",
+                        "on-primary-fixed": "#000000",
+                        "on-tertiary-fixed-variant": "#006266",
+                        "primary-dim": "#3e65ff",
+                        "secondary-fixed": "#e4c6ff",
+                        "secondary-container": "#7701d0",
+                        "error": "#ff6e84"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "display": ["Space Grotesk"],
+                        "body": ["Manrope"],
+                        "label": ["Manrope"]
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="style.css">
 </head>
-
-<body>
+<body class="bg-surface selection:bg-primary/30 min-h-screen perspective-[1000px]">
+    
+    <!-- Mouse Cursor Glow from script.js -->
     <div class="cursor-glow"></div>
-    <div class="background-elements">
-        <div class="orb orb-1"></div>
-        <div class="orb orb-2"></div>
-        <div class="orb orb-3"></div>
-    </div>
 
-    <nav>
-        <div class="logo">V.</div>
-        <div class="nav-links">
-            <a href="#home">Trang chủ</a>
-            <a href="#tools">Công cụ</a>
-            <a href="#contact">Liên hệ</a>
+    <!-- TopAppBar -->
+    <nav class="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl flex justify-between items-center px-6 py-3 z-50 shadow-[0px_0px_40px_rgba(62,101,255,0.08)]">
+        <div class="flex items-center gap-2">
+            <span class="text-2xl font-black tracking-tighter bg-gradient-to-r from-[#3e65ff] to-[#bf81ff] bg-clip-text text-transparent font-['Space_Grotesk']">V.</span>
+        </div>
+        <div class="flex items-center gap-6">
+            <a class="hidden md:block text-white font-bold border-b border-transparent hover:border-blue-500 hover:text-blue-400 transition-colors font-['Space_Grotesk'] tracking-tight" href="#home">Trang chủ</a>
+            <a class="hidden md:block text-on-surface-variant font-bold hover:text-white transition-colors font-['Space_Grotesk'] tracking-tight" href="#tools">Công cụ</a>
+            <a class="text-[#3e65ff] font-['Space_Grotesk'] font-bold tracking-tight uppercase hover:text-white transition-all duration-300 active:scale-90" href="#contact">Liên hệ</a>
         </div>
     </nav>
 
-    <main>
-        <section id="home" class="hero">
-            <div class="hero-content">
-                <div class="profile-container">
-                    <img src="avatar.jpg" alt="Quang Vinh Avatar" class="profile-avatar">
-                </div>
-                <!-- <h2 class="subtitle">Xin chào, tôi là <span class="highlight">Quang Vinh</span></h2> -->
-                <h1 class="title">Quang Vinh <br><span class="highlight">&</span> MamaBoii</h1>
-                <p class="description">Nơi lưu trữ và tổng hợp các công cụ tiện ích cá nhân. Tối ưu hóa luồng công việc
-                    của bạn với các ứng dụng tự động hóa, quản lý và xử lý dữ liệu.</p>
-                <div class="contact-info">
-                    <a href="mailto:phamvinh2201@gmail.com" class="email-link"><i class="fa-solid fa-envelope"></i>
-                        phamvinh2201@gmail.com</a>
-                </div>
-                <div class="hero-buttons">
-                    <a href="#tools" class="cta-button">Khám phá Công cụ <i class="fa-solid fa-arrow-right"></i></a>
-                </div>
+    <main class="relative pt-32 pb-20 px-6 max-w-6xl mx-auto">
+        <!-- Background Glows -->
+        <div class="fixed top-[-10%] right-[-20%] w-[80%] h-[50%] bg-primary-dim/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
+        <div class="fixed bottom-[10%] left-[-20%] w-[80%] h-[50%] bg-secondary/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
+        <!-- Hero Section -->
+        <section id="home" class="relative z-10 flex flex-col items-center text-center mb-32 pt-10">
+            <div class="relative mb-8 group">
+                <div class="absolute -inset-1 bg-gradient-to-r from-primary-dim to-secondary rounded-full blur opacity-25 group-hover:opacity-60 transition duration-1000"></div>
+                <img alt="Quang Vinh Avatar" class="relative w-32 h-32 rounded-full border-2 border-white/10 object-cover grayscale hover:grayscale-0 transition-all duration-500" src="avatar.jpg"/>
             </div>
+            
+            <h1 class="text-5xl md:text-7xl font-black font-headline tracking-tighter mb-4 leading-[1] text-white">
+                Quang Vinh <br>
+                <span class="bg-gradient-to-br from-primary via-secondary to-tertiary bg-clip-text text-transparent">& MamaBoii</span>
+            </h1>
+            
+            <p class="text-on-surface-variant text-lg md:text-xl font-body leading-relaxed mb-10 max-w-2xl mx-auto">
+                Nơi lưu trữ và tổng hợp các công cụ tiện ích cá nhân. Tối ưu hóa luồng công việc của bạn với các ứng dụng tự động hóa, quản lý và xử lý dữ liệu.
+            </p>
+            
+            <a href="mailto:phamvinh2201@gmail.com" class="glass-card px-8 py-4 rounded-full border border-white/10 flex items-center gap-3 group active:scale-95 transition-all hover:border-primary/40 hover:bg-white/5">
+                <span class="font-headline font-bold tracking-tight text-on-surface"><i class="fa-solid fa-envelope mr-2"></i>phamvinh2201@gmail.com</span>
+                <span class="material-symbols-outlined text-primary group-hover:translate-x-1 transition-transform">arrow_forward</span>
+            </a>
         </section>
 
-        <section id="tools" class="tools-section">
-            <div class="section-header">
-                <h2>Công cụ <span class="highlight">Web</span></h2>
-                <p>Danh sách các tiện ích tôi đã phát triển</p>
+        <!-- Web Tools Section -->
+        <section id="tools" class="relative z-10 scroll-mt-32 perspective-container">
+            <div class="flex items-center gap-4 mb-8">
+                <div class="h-[1px] w-8 bg-primary"></div>
+                <h2 class="font-headline text-sm font-bold tracking-[0.3em] uppercase text-primary">Công cụ Web</h2>
             </div>
+            
+            <p class="text-on-surface-variant mb-12 text-lg font-body">Danh sách các tiện ích tôi đã phát triển</p>
 
-            <div class="tools-grid">
-                <!-- Tool 1 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-barcode"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Barcode & QR Generator</h3>
-                        <p>Tạo mã vạch và mã QR nhanh chóng với giao diện hiện đại, dễ dàng tùy chỉnh.</p>
-                        <a href="https://dinhdaumoi.github.io/Barcode/" target="_blank" class="tool-link">Mở công cụ <i
-                                class="fa-solid fa-arrow-up-right-from-square"></i></a>
-                    </div>
-                </div>
-
-                <!-- Tool 2 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-list-ol"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Leading Zeros</h3>
-                        <p>Công cụ xử lý danh sách mã số, tự động thêm số 0 ở đầu để đảm bảo độ dài cố định.</p>
-                        <a href="https://dinhdaumoi.github.io/Zero-Padder/" target="_blank" class="tool-link">Mở công cụ
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
-                    </div>
-                </div>
-
-                <!-- Tool 3 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-trash-can"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Bulk GitHub Repo Deletion</h3>
-                        <p>Xóa hàng loạt repository trên GitHub một cách an toàn và nhanh chóng.</p>
-                        <a href="https://dinhdaumoi.github.io/Repo-Deleter/" target="_blank" class="tool-link">Mở công
-                            cụ <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+            <div id="toolsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative">
+                <!-- Snake Container -->
+                <canvas class="snake-canvas" id="snakeCanvas"></canvas>
+                
+                <!-- Tool 1: Barcode Generator -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-primary-dim/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-primary/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-barcode text-primary text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/Barcode/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-primary transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Barcode & QR Generator</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Tạo mã vạch và mã QR nhanh chóng với giao diện hiện đại, dễ dàng tùy chỉnh.</p>
+                        <a href="https://dinhdaumoi.github.io/Barcode/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-primary border border-transparent group-hover:border-primary/20 transition-all">
+                            Mở công cụ
+                        </a>
                     </div>
                 </div>
 
-                <!-- Tool 4 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-file-invoice"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Biên Bản Hư Hỏng</h3>
-                        <p>Nhập liệu và xuất PDF báo cáo hư hỏng, đồng bộ trực tiếp với Google Sheets.</p>
-                        <a href="https://dinhdaumoi.github.io/LapBB/" target="_blank" class="tool-link">Mở công cụ <i
-                                class="fa-solid fa-arrow-up-right-from-square"></i></a>
-                    </div>
-                </div>
-
-                <!-- Tool 5 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-music"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Playlist</h3>
-                        <p>Phát nhạc trực tuyến .</p>
-                        <a href="https://dinhdaumoi.github.io/Playlist/" target="_blank" class="tool-link">Mở công cụ <i
-                                class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                <!-- Tool 2: Leading Zeros -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-secondary/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-secondary/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-list-ol text-secondary text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/Zero-Padder/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-secondary transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Leading Zeros</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Công cụ xử lý danh sách mã số, tự động thêm số 0 ở đầu để đảm bảo độ dài cố định.</p>
+                        <a href="https://dinhdaumoi.github.io/Zero-Padder/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-secondary border border-transparent group-hover:border-secondary/20 transition-all">
+                            Mở công cụ
+                        </a>
                     </div>
                 </div>
 
-                <!-- Tool 6 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-folder-closed"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Lưu chứng từ</h3>
-                        <p>Lưu trữ chứng từ, đồng bộ trực tiếp với Google Sheets</p>
-                        <a href="https://dinhdaumoi.github.io/SaveCode/" target="_blank" class="tool-link">Mở công cụ <i
-                                class="fa-solid fa-arrow-up-right-from-square"></i></a>
-                    </div>
-                </div>
-                <!-- Tool 7 -->
-                <div class="tool-card">
-                    <div class="tool-icon">
-                        <i class="fa-solid fa-folder-closed"></i>
-                    </div>
-                    <div class="tool-info">
-                        <h3>Manager Printer</h3>
-                        <p>Lưu trữ, đồng bộ trực tiếp với Google Sheets</p>
-                        <a href="https://dinhdaumoi.github.io/Manager-Printer/" target="_blank" class="tool-link">Mở
-                            công cụ <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                <!-- Tool 3: Bulk Repo Deletion -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-tertiary/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-tertiary/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-trash-can text-tertiary text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/Repo-Deleter/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-tertiary transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Bulk Repo Deletion</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Xóa hàng loạt repository trên GitHub một cách an toàn và nhanh chóng.</p>
+                        <a href="https://dinhdaumoi.github.io/Repo-Deleter/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-tertiary border border-transparent group-hover:border-tertiary/20 transition-all">
+                            Mở công cụ
+                        </a>
                     </div>
                 </div>
+
+                <!-- Tool 4: Biên Bản Hư Hỏng -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#ff6e84]/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-[#ff6e84]/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-file-invoice text-[#ff6e84] text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/LapBB/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-[#ff6e84] transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Biên Bản Hư Hỏng</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Nhập liệu và xuất PDF báo cáo hư hỏng, đồng bộ trực tiếp với Google Sheets.</p>
+                        <a href="https://dinhdaumoi.github.io/LapBB/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-[#ff6e84] border border-transparent group-hover:border-[#ff6e84]/20 transition-all">
+                            Mở công cụ
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Tool 5: Playlist -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#00f4fe]/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-[#00f4fe]/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-music text-[#00f4fe] text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/Playlist/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-[#00f4fe] transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Playlist</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Phát nhạc trực tuyến với giao diện hiện đại, tối giản.</p>
+                        <a href="https://dinhdaumoi.github.io/Playlist/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-[#00f4fe] border border-transparent group-hover:border-[#00f4fe]/20 transition-all">
+                            Mở công cụ
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Tool 6: Lưu chứng từ -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#dab4ff]/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-[#dab4ff]/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-folder-closed text-[#dab4ff] text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/SaveCode/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-[#dab4ff] transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Lưu chứng từ</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Lưu trữ chứng từ an toàn, đồng bộ trực tiếp với Google Sheets.</p>
+                        <a href="https://dinhdaumoi.github.io/SaveCode/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-[#dab4ff] border border-transparent group-hover:border-[#dab4ff]/20 transition-all">
+                            Mở công cụ
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Tool 7: Manager Printer -->
+                <div class="tool-card group relative h-full flex flex-col">
+                    <div class="absolute inset-0 bg-gradient-to-br from-[#97a9ff]/20 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div class="glass-card relative p-8 rounded-[2rem] border border-white/5 hover:border-[#97a9ff]/30 transition-colors h-full flex flex-col">
+                        <div class="flex items-start justify-between mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                                <i class="fa-solid fa-print text-[#97a9ff] text-2xl"></i>
+                            </div>
+                            <a href="https://dinhdaumoi.github.io/Manager-Printer/" target="_blank" class="p-3 rounded-full bg-white/5 text-on-surface-variant group-hover:text-[#97a9ff] transition-colors">
+                                <span class="material-symbols-outlined">arrow_outward</span>
+                            </a>
+                        </div>
+                        <h3 class="font-headline text-2xl font-bold mb-3 text-white">Manager Printer</h3>
+                        <p class="font-body text-base text-on-surface-variant leading-relaxed mb-8 flex-grow">Quản lý kho máy in, lưu trữ và theo dõi linh kiện nhanh gọn.</p>
+                        <a href="https://dinhdaumoi.github.io/Manager-Printer/" target="_blank" class="block text-center w-full py-4 bg-surface-container-highest rounded-xl font-label text-sm font-bold tracking-widest uppercase text-on-surface-variant group-hover:text-[#97a9ff] border border-transparent group-hover:border-[#97a9ff]/20 transition-all">
+                            Mở công cụ
+                        </a>
+                    </div>
+                </div>
+
             </div>
         </section>
     </main>
 
-    <footer>
-        <p>&copy; 2026 MamaBoii <i class="fa-solid fa-heart"></i></p>
+    <!-- Footer -->
+    <footer id="contact" class="w-full border-t border-white/5 mt-20 bg-[#0b0e14] relative z-10">
+        <div class="flex flex-col md:flex-row justify-between items-center px-8 py-10 gap-6 max-w-6xl mx-auto">
+            <div class="text-center md:text-left">
+                <p class="font-['Manrope'] text-xs tracking-widest uppercase text-slate-500 flex items-center gap-2 justify-center md:justify-start">
+                    © 2026 MamaBoii <i class="fa-solid fa-heart text-red-500 text-sm"></i> QUANG VINH PORTFOLIO
+                </p>
+            </div>
+            <div class="flex gap-8">
+                <a class="font-['Manrope'] text-xs tracking-widest uppercase text-slate-500 hover:text-[#a1faff] transition-colors opacity-80 hover:opacity-100" href="#home">Trang chủ</a>
+                <a class="font-['Manrope'] text-xs tracking-widest uppercase text-slate-500 hover:text-[#a1faff] transition-colors opacity-80 hover:opacity-100" href="#tools">Công cụ</a>
+                <a class="font-['Manrope'] text-xs tracking-widest uppercase text-slate-500 hover:text-[#a1faff] transition-colors opacity-80 hover:opacity-100" href="mailto:phamvinh2201@gmail.com">Liên hệ</a>
+            </div>
+        </div>
     </footer>
-
+    
     <script src="script.js"></script>
 </body>
-
 </html>
