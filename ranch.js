@@ -590,7 +590,410 @@
         return { el, img, hpBar, hp: 100 };
     }
 
-    /* ── Run battle rounds ────────────────────────────────── */
+    /* ── MOVE / SKILL DATABASE ────────────────────────────────── */
+    const POKEMON_TYPES = {
+        4:'fire',6:'fire',77:'fire',155:'fire',390:'fire',255:'fire',498:'fire',607:'fire',653:'fire',
+        7:'water',54:'water',129:'water',131:'water',158:'water',183:'water',258:'water',349:'water',393:'water',501:'water',656:'water',
+        25:'electric',145:'electric',172:'electric',179:'electric',403:'electric',479:'electric',587:'electric',
+        1:'grass',187:'grass',252:'grass',387:'grass',495:'grass',650:'grass',
+        63:'psychic',150:'psychic',151:'psychic',196:'psychic',280:'psychic',
+        52:'dark',197:'dark',198:'dark',430:'dark',570:'dark',
+        147:'dragon',149:'dragon',246:'dragon',371:'dragon',384:'dragon',443:'dragon',635:'dragon',714:'dragon',
+        144:'ice',225:'ice',
+        92:'ghost',425:'ghost',426:'ghost',
+        447:'fighting',304:'fighting',
+        39:'fairy',175:'fairy',176:'fairy',468:'fairy',427:'fairy',
+        133:'normal',143:'normal',
+        74:'rock',104:'rock',142:'rock',
+        12:'bug',123:'bug',267:'bug',
+        17:'flying',18:'flying',21:'flying',22:'flying',146:'flying',249:'flying',250:'flying',277:'flying',
+        278:'flying',333:'flying',334:'flying',380:'flying',381:'flying',469:'flying',472:'flying',521:'flying',
+        527:'flying',628:'flying',641:'flying',643:'flying',644:'flying',661:'flying',663:'flying',
+        41:'poison',49:'poison',
+        330:'ground',
+    };
+
+    const MOVE_DATA = {
+        fire:     { moves: ['Flamethrower','Fire Blast','Ember','Fire Punch'],    color: '#FF4500', sparks: ['#FF4500','#FF6347','#FFD700','#FF8C00'], emoji: '🔥' },
+        water:    { moves: ['Hydro Pump','Surf','Water Gun','Aqua Tail'],         color: '#1E90FF', sparks: ['#1E90FF','#00BFFF','#87CEEB','#4169E1'], emoji: '💧' },
+        electric: { moves: ['Thunderbolt','Thunder','Spark','Volt Tackle'],       color: '#FFD700', sparks: ['#FFD700','#FFF700','#FFFF00','#FFA500'], emoji: '⚡' },
+        grass:    { moves: ['Solar Beam','Razor Leaf','Vine Whip','Leaf Storm'],  color: '#32CD32', sparks: ['#32CD32','#228B22','#90EE90','#00FF00'], emoji: '🍃' },
+        psychic:  { moves: ['Psychic','Psybeam','Confusion','Future Sight'],      color: '#FF69B4', sparks: ['#FF69B4','#DA70D6','#EE82EE','#FF1493'], emoji: '🔮' },
+        dark:     { moves: ['Dark Pulse','Shadow Ball','Crunch','Night Slash'],   color: '#483D8B', sparks: ['#483D8B','#6A5ACD','#191970','#800080'], emoji: '🌑' },
+        dragon:   { moves: ['Dragon Claw','Draco Meteor','Dragon Pulse','Outrage'], color: '#7B68EE', sparks: ['#7B68EE','#6A5ACD','#9370DB','#8A2BE2'], emoji: '🐉' },
+        ice:      { moves: ['Ice Beam','Blizzard','Frost Breath','Ice Punch'],    color: '#00CED1', sparks: ['#00CED1','#AFEEEE','#E0FFFF','#B0E0E6'], emoji: '❄️' },
+        ghost:    { moves: ['Shadow Ball','Hex','Phantom Force','Night Shade'],   color: '#8B008B', sparks: ['#8B008B','#9932CC','#BA55D3','#4B0082'], emoji: '👻' },
+        fighting: { moves: ['Close Combat','Aura Sphere','Brick Break','Hi Jump Kick'], color: '#CD853F', sparks: ['#CD853F','#D2691E','#F4A460','#FF8C00'], emoji: '👊' },
+        fairy:    { moves: ['Moonblast','Dazzling Gleam','Play Rough','Fairy Wind'], color: '#FFB6C1', sparks: ['#FFB6C1','#FF69B4','#FFC0CB','#FF1493'], emoji: '✨' },
+        normal:   { moves: ['Tackle','Hyper Beam','Body Slam','Quick Attack'],    color: '#C0C0C0', sparks: ['#C0C0C0','#DCDCDC','#FFF','#A9A9A9'],    emoji: '💥' },
+        rock:     { moves: ['Rock Slide','Stone Edge','Rock Throw','Smack Down'], color: '#B8860B', sparks: ['#B8860B','#DAA520','#CD853F','#8B7355'], emoji: '🪨' },
+        bug:      { moves: ['X-Scissor','Bug Buzz','Signal Beam','Fury Cutter'],  color: '#9ACD32', sparks: ['#9ACD32','#6B8E23','#556B2F','#ADFF2F'], emoji: '🐛' },
+        flying:   { moves: ['Air Slash','Hurricane','Brave Bird','Aerial Ace'],   color: '#87CEEB', sparks: ['#87CEEB','#B0C4DE','#ADD8E6','#4682B4'], emoji: '🌪️' },
+        poison:   { moves: ['Sludge Bomb','Poison Jab','Toxic','Venoshock'],      color: '#9932CC', sparks: ['#9932CC','#8B008B','#BA55D3','#DA70D6'], emoji: '☠️' },
+        ground:   { moves: ['Earthquake','Earth Power','Dig','Mud Shot'],         color: '#D2B48C', sparks: ['#D2B48C','#DEB887','#F4A460','#8B7355'], emoji: '🌍' },
+    };
+
+    function getMoveData(id) {
+        const type = POKEMON_TYPES[id] || 'normal';
+        return MOVE_DATA[type] || MOVE_DATA.normal;
+    }
+
+    /* ── Show move name in battle overlay ─────────────────────── */
+    function showBattleMoveName(parentEl, moveName, color, emoji) {
+        const label = document.createElement('div');
+        label.textContent = `${emoji} ${moveName}`;
+        Object.assign(label.style, {
+            position: 'absolute', top: '-8px', left: '50%',
+            transform: 'translateX(-50%) scale(0)',
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '800',
+            fontSize: '13px', color: color,
+            textShadow: `0 0 8px ${color}, 0 1px 3px rgba(0,0,0,0.9)`,
+            pointerEvents: 'none', zIndex: '20005', whiteSpace: 'nowrap',
+            letterSpacing: '0.5px'
+        });
+        parentEl.style.position = 'relative';
+        parentEl.appendChild(label);
+        label.animate([
+            { transform: 'translateX(-50%) scale(0) translateY(0)', opacity: 0 },
+            { transform: 'translateX(-50%) scale(1.15) translateY(-4px)', opacity: 1, offset: 0.2 },
+            { transform: 'translateX(-50%) scale(1) translateY(-6px)', opacity: 1, offset: 0.6 },
+            { transform: 'translateX(-50%) scale(0.8) translateY(-18px)', opacity: 0 }
+        ], { duration: 1000, fill: 'forwards', easing: 'ease-out' }).onfinish = () => label.remove();
+    }
+
+    /* ── Type ring burst + PARTICLE EFFECTS ─────────────────── */
+    function spawnTypeRing(x, y, color) {
+        const ring = document.createElement('div');
+        Object.assign(ring.style, {
+            position: 'fixed', left: x+'px', top: y+'px',
+            width: '12px', height: '12px', borderRadius: '50%',
+            border: `2px solid ${color}`,
+            boxShadow: `0 0 10px ${color}, inset 0 0 5px ${color}40`,
+            transform: 'translate(-50%,-50%) scale(0.5)',
+            pointerEvents: 'none', zIndex: '20003'
+        });
+        document.body.appendChild(ring);
+        ring.animate([
+            { transform: 'translate(-50%,-50%) scale(0.5)', opacity: 1 },
+            { transform: 'translate(-50%,-50%) scale(3.5)', opacity: 0 }
+        ], { duration: 450, easing: 'ease-out', fill: 'forwards' }).onfinish = () => ring.remove();
+    }
+
+    function spawnTypeParticles(x, y, type) {
+        const FX = {
+            fire: () => {
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🔥','🔥','✦','●']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(10,20)+'px', pointerEvents:'none', zIndex:'20004',
+                        filter:'drop-shadow(0 0 4px #FF4500)'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(1)', opacity:1 },
+                        { transform:`translateY(${-rand(30,65)}px) translateX(${rand(-15,15)}px) scale(0.3)`, opacity:0 }
+                    ], { duration:rand(400,700), easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            water: () => {
+                for (let i = 0; i < 10; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['💧','💦','•','○']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+'px', top:y+'px',
+                        fontSize:rand(8,16)+'px', color:'#1E90FF',
+                        pointerEvents:'none', zIndex:'20004',
+                        filter:'drop-shadow(0 0 3px #00BFFF)'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/10)*i + rand(-0.3,0.3);
+                    const dist = rand(22,50);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1.2)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration:rand(350,550), easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            electric: () => {
+                for (let i = 0; i < 4; i++) {
+                    const bolt = document.createElement('div');
+                    bolt.textContent = '⚡';
+                    Object.assign(bolt.style, {
+                        position:'fixed', left:x+rand(-25,25)+'px', top:y+rand(-30,5)+'px',
+                        fontSize:rand(16,28)+'px', pointerEvents:'none', zIndex:'20004',
+                        filter:'drop-shadow(0 0 6px #FFD700) drop-shadow(0 0 12px #FFF700)', opacity:'0'
+                    });
+                    document.body.appendChild(bolt);
+                    bolt.animate([
+                        { opacity:0, transform:'scale(0.3) rotate(-20deg)' },
+                        { opacity:1, transform:'scale(1.2) rotate(0deg)', offset:0.15 },
+                        { opacity:1, transform:'scale(1) rotate(5deg)', offset:0.4 },
+                        { opacity:0, transform:'scale(0.5) translateY(-15px) rotate(-10deg)' }
+                    ], { duration:rand(350,550), delay:i*60, fill:'forwards' }).onfinish = () => bolt.remove();
+                }
+                for (let i = 0; i < 6; i++) {
+                    const line = document.createElement('div');
+                    const len = rand(15,32);
+                    Object.assign(line.style, {
+                        position:'fixed', left:x+'px', top:y+'px',
+                        width:len+'px', height:'2px',
+                        background:'linear-gradient(90deg, #FFD700, #FFF700, transparent)',
+                        transform:`rotate(${rand(0,360)}deg)`, transformOrigin:'left center',
+                        pointerEvents:'none', zIndex:'20004', boxShadow:'0 0 4px #FFD700'
+                    });
+                    document.body.appendChild(line);
+                    line.animate([
+                        { opacity:1, width:len+'px' },
+                        { opacity:0, width:'0px' }
+                    ], { duration:rand(200,400), delay:rand(0,150), fill:'forwards' }).onfinish = () => line.remove();
+                }
+            },
+            grass: () => {
+                const leaves = ['🍃','🌿','🍀','🌱'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(leaves);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(10,18)+'px', pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    const dx = rand(-40,40), dy = rand(-50,-15);
+                    p.animate([
+                        { transform:'scale(1) rotate(0deg)', opacity:1 },
+                        { transform:`translate(${dx}px,${dy}px) scale(0.4) rotate(${rand(-180,180)}deg)`, opacity:0 }
+                    ], { duration:rand(500,800), delay:i*40, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ice: () => {
+                const flakes = ['❄️','❄','✧','✦'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(flakes);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-15,15)+'px', top:y+rand(-15,15)+'px',
+                        fontSize:rand(10,18)+'px', color:'#B0E0E6',
+                        pointerEvents:'none', zIndex:'20004', filter:'drop-shadow(0 0 4px #00CED1)'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.2) rotate(0deg)', opacity:1 },
+                        { transform:`translate(${rand(-30,30)}px,${rand(20,40)}px) scale(0) rotate(${rand(60,180)}deg)`, opacity:0 }
+                    ], { duration:rand(500,800), delay:i*50, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            psychic: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🔮','✦','◆','★']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+'px', top:y+'px',
+                        fontSize:rand(10,16)+'px', color:'#FF69B4',
+                        pointerEvents:'none', zIndex:'20004', filter:'drop-shadow(0 0 5px #FF69B4)'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/6)*i;
+                    const dist = rand(25,45);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(0) rotate(0)', opacity:0 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist*0.5}px), calc(-50% + ${Math.sin(angle)*dist*0.5}px)) scale(1.3) rotate(180deg)`, opacity:1, offset:0.4 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(360deg)`, opacity:0 }
+                    ], { duration:rand(500,700), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ghost: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['👻','💀','🌑','◉']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(12,20)+'px', pointerEvents:'none', zIndex:'20004',
+                        filter:'drop-shadow(0 0 6px #8B008B)'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(0.5)', opacity:0 },
+                        { transform:'translateY(-5px) scale(1.2)', opacity:0.9, offset:0.3 },
+                        { transform:`translateY(${-rand(25,45)}px) translateX(${rand(-20,20)}px) scale(0)`, opacity:0 }
+                    ], { duration:rand(600,900), delay:i*80, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            dragon: () => {
+                for (let i = 0; i < 7; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🐉','💎','✦','◆']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+'px', top:y+'px',
+                        fontSize:rand(10,18)+'px', color:pick(['#7B68EE','#9370DB','#8A2BE2']),
+                        pointerEvents:'none', zIndex:'20004', filter:'drop-shadow(0 0 4px #7B68EE)'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/7)*i;
+                    const dist = rand(25,50);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1.5)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(${rand(-90,90)}deg)`, opacity:0 }
+                    ], { duration:rand(400,650), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            dark: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    const sz = rand(8,16);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-12,12)+'px', top:y+rand(-12,12)+'px',
+                        width:sz+'px', height:sz+'px', borderRadius:'50%',
+                        background:'radial-gradient(circle, #483D8B 0%, #191970 60%, transparent 100%)',
+                        pointerEvents:'none', zIndex:'20004', boxShadow:'0 0 8px #191970'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.5)', opacity:0.8 },
+                        { transform:`translate(${rand(-25,25)}px,${rand(-25,25)}px) scale(0)`, opacity:0 }
+                    ], { duration:rand(400,700), delay:i*50, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            fighting: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['👊','💢','💥','✊']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(12,20)+'px', pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'scale(0) rotate(-30deg)', opacity:0 },
+                        { transform:'scale(1.3) rotate(0deg)', opacity:1, offset:0.2 },
+                        { transform:`translate(${rand(-25,25)}px,${rand(-30,5)}px) scale(0) rotate(${rand(-45,45)}deg)`, opacity:0 }
+                    ], { duration:rand(350,550), delay:i*60, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            fairy: () => {
+                const stars = ['✨','⭐','✦','💖','★'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(stars);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(8,16)+'px', pointerEvents:'none', zIndex:'20004',
+                        filter:'drop-shadow(0 0 3px #FFB6C1)'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/8)*i;
+                    const dist = rand(18,40);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(0)', opacity:0 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist*0.6}px), calc(-50% + ${Math.sin(angle)*dist*0.6}px)) scale(1.3)`, opacity:1, offset:0.35 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration:rand(500,750), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            flying: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🌪️','💨','〰','≋']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-10,10)+'px', top:y+rand(-5,5)+'px',
+                        fontSize:rand(12,20)+'px', color:'#87CEEB',
+                        pointerEvents:'none', zIndex:'20004', filter:'drop-shadow(0 0 3px #87CEEB)'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'translateX(0) scale(1)', opacity:1 },
+                        { transform:`translateX(${rand(30,60)*(Math.random()<0.5?1:-1)}px) translateY(${rand(-15,15)}px) scale(0.3)`, opacity:0 }
+                    ], { duration:rand(400,650), delay:i*50, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            poison: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['☠️','💀','●','◉']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-10,10)+'px', top:y+rand(-5,10)+'px',
+                        fontSize:rand(10,16)+'px', color:'#9932CC',
+                        pointerEvents:'none', zIndex:'20004', filter:'drop-shadow(0 0 4px #9932CC)'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1) translateY(0)', opacity:0.9 },
+                        { transform:`scale(0.3) translateY(${-rand(25,45)}px) translateX(${rand(-15,15)}px)`, opacity:0 }
+                    ], { duration:rand(500,750), delay:i*60, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            rock: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🪨','◆','■','▲']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-8,8)+'px', top:y+rand(-8,8)+'px',
+                        fontSize:rand(10,16)+'px', color:'#B8860B',
+                        pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.2) translateY(0)', opacity:1 },
+                        { transform:`translate(${rand(-20,20)}px,${rand(18,38)}px) scale(0) rotate(${rand(-90,90)}deg)`, opacity:0 }
+                    ], { duration:rand(350,550), delay:i*40, easing:'ease-in', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            bug: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🐛','✂','✦','×']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-12,12)+'px', top:y+rand(-12,12)+'px',
+                        fontSize:rand(10,16)+'px', color:'#9ACD32',
+                        pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/5)*i; const dist = rand(18,35);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(180deg)`, opacity:0 }
+                    ], { duration:rand(300,500), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ground: () => {
+                for (let i = 0; i < 7; i++) {
+                    const p = document.createElement('div');
+                    const sz = rand(5,10);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-15,15)+'px', top:y+5+'px',
+                        width:sz+'px', height:sz+'px', borderRadius:rand(0,1)>0.5?'50%':'2px',
+                        background:pick(['#D2B48C','#DEB887','#8B7355','#CD853F']),
+                        pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(1)', opacity:1 },
+                        { transform:`translate(${rand(-25,25)}px,${-rand(18,40)}px) scale(0)`, opacity:0 }
+                    ], { duration:rand(350,550), delay:i*30, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            normal: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['💥','✦','★','●']);
+                    Object.assign(p.style, {
+                        position:'fixed', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize:rand(10,16)+'px', color:'#C0C0C0', pointerEvents:'none', zIndex:'20004'
+                    });
+                    document.body.appendChild(p);
+                    const angle = (Math.PI*2/5)*i; const dist = rand(18,35);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration:400, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            }
+        };
+        (FX[type] || FX.normal)();
+    }
+
+    /* ── Run battle rounds (with moves) ──────────────────────── */
     function runRounds(overlay, sideA, sideB, pkA, pkB) {
         const totalRounds = 3 + Math.floor(Math.random() * 3);
         let round = 0;
@@ -607,8 +1010,16 @@
 
             const attacker = round % 2 === 1 ? sideA : sideB;
             const defender = round % 2 === 1 ? sideB : sideA;
+            const atkPk = round % 2 === 1 ? pkA : pkB;
             const dmg = 15 + Math.floor(Math.random() * 25);
             const dir = attacker === sideA ? 1 : -1;
+
+            // Get move for this attacker
+            const moveInfo = getMoveData(atkPk.id);
+            const moveName = pick(moveInfo.moves);
+
+            // Show move name above attacker
+            showBattleMoveName(attacker.el, moveName, moveInfo.color, moveInfo.emoji);
 
             // Lunge animation
             attacker.img.animate([
@@ -617,18 +1028,22 @@
                 { transform: `scaleX(${attacker === sideB ? -1 : 1}) translateX(0)` }
             ], { duration: 300, easing: 'ease-in-out' });
 
-            // Hit flash
+            // Hit flash with type color
             setTimeout(() => {
                 defender.img.animate([
                     { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' },
-                    { filter: 'brightness(3) drop-shadow(0 0 20px #ff3030)', offset: 0.3 },
+                    { filter: `brightness(2.5) drop-shadow(0 0 20px ${moveInfo.color})`, offset: 0.3 },
                     { filter: 'brightness(0.5)', offset: 0.5 },
                     { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' }
                 ], { duration: 400, easing: 'ease-out' });
 
-                // Hit sparks
+                // Type-colored hit sparks
                 const rect = defender.img.getBoundingClientRect();
-                spawnBattleSparks(rect.left + rect.width/2, rect.top + rect.height/2);
+                const cx = rect.left + rect.width/2;
+                const cy = rect.top + rect.height/2;
+                spawnBattleSparks(cx, cy, moveInfo.sparks);
+                spawnTypeRing(cx, cy, moveInfo.color);
+                spawnTypeParticles(cx, cy, POKEMON_TYPES[atkPk.id] || 'normal');
 
                 defender.hp = Math.max(0, defender.hp - dmg);
                 defender.hpBar.style.width = defender.hp + '%';
@@ -644,9 +1059,9 @@
         doRound();
     }
 
-    /* ── Battle sparks ────────────────────────────────────── */
-    function spawnBattleSparks(x, y) {
-        const colors = ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
+    /* ── Battle sparks (type-colored) ────────────────────────── */
+    function spawnBattleSparks(x, y, sparkColors) {
+        const colors = sparkColors || ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
         for (let i = 0; i < 6; i++) {
             const s = document.createElement('div');
             const sz = rand(3, 6);

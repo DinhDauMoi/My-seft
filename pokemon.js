@@ -200,7 +200,7 @@
         }
 
         update() {
-            if (this.state === 'frozen') return; // captured — don't move
+            if (this.state === 'frozen' || this.state === 'battling') return;
             const W = window.innerWidth;
             this.groundY = window.innerHeight - GROUND_OFFSET - SPRITE_SIZE;
 
@@ -372,7 +372,7 @@
         }
 
         update() {
-            if (this.state === 'frozen') return; // captured — don't move
+            if (this.state === 'frozen' || this.state === 'battling') return;
             this.W = window.innerWidth;
             this.H = window.innerHeight;
             this.time += this.waveFreq;
@@ -462,6 +462,7 @@
     function loop() {
         for (const p of pokemons) p.update();
         for (const f of flyers) f.update();
+        checkForBattle();
         requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
@@ -475,10 +476,709 @@
     });
 
     /* ══════════════════════════════════════════════════════════
-     *  BATTLE SYSTEM + POKÉMON ROTATION (every 2 minutes)
+     *  HOMEPAGE IN-PLACE BATTLE SYSTEM
+     *  - Pokemon fight where they stand (no center overlay)
+     *  - HP bars appear on sprites during battle
+     *  - No background blur/dim
+     *  - Loser fades out, new Pokemon spawns
+     *  - Random chance triggers battles when nearby
      * ══════════════════════════════════════════════════════════ */
-    let isThrowing = false;
     let battleActive = false;
+    const BATTLE_PROXIMITY = 120;
+    // Battle every 6 hours
+    const BATTLE_COOLDOWN = 6 * 60 * 60 * 1000; // 6 hours in ms
+    let lastBattleTime = parseInt(localStorage.getItem('pkLastBattle') || '0');
+    function canBattle() {
+        return Date.now() - lastBattleTime >= BATTLE_COOLDOWN;
+    }
+    function markBattled() {
+        lastBattleTime = Date.now();
+        localStorage.setItem('pkLastBattle', String(lastBattleTime));
+    }
+    const BATTLE_CHANCE = 0.0004;
+
+    function addHpBar(pk) {
+        if (pk._hpBarWrap) return;
+        const wrap = document.createElement('div');
+        Object.assign(wrap.style, {
+            position: 'absolute', top: '-10px', left: '50%',
+            transform: 'translateX(-50%)', width: '50px', height: '6px',
+            borderRadius: '3px', background: 'rgba(0,0,0,0.6)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            overflow: 'hidden', zIndex: '10010',
+            boxShadow: '0 0 6px rgba(0,0,0,0.4)',
+            opacity: '0', transition: 'opacity 0.3s'
+        });
+        const bar = document.createElement('div');
+        Object.assign(bar.style, {
+            width: '100%', height: '100%', borderRadius: '3px',
+            background: 'linear-gradient(90deg, #4ECDC4, #44d62c)',
+            transition: 'width 0.4s ease, background 0.4s'
+        });
+        wrap.appendChild(bar);
+        pk.el.appendChild(wrap);
+        pk._hpBarWrap = wrap;
+        pk._hpBar = bar;
+        pk._hp = 100;
+        setTimeout(() => { wrap.style.opacity = '1'; }, 50);
+    }
+
+    function removeHpBar(pk) {
+        if (pk._hpBarWrap) {
+            pk._hpBarWrap.style.opacity = '0';
+            setTimeout(() => {
+                if (pk._hpBarWrap) pk._hpBarWrap.remove();
+                pk._hpBarWrap = null;
+                pk._hpBar = null;
+            }, 300);
+        }
+    }
+
+    function updateHpBar(pk) {
+        if (!pk._hpBar) return;
+        pk._hpBar.style.width = pk._hp + '%';
+        if (pk._hp < 30) pk._hpBar.style.background = 'linear-gradient(90deg, #ff3030, #ff6347)';
+        else if (pk._hp < 60) pk._hpBar.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
+    }
+
+    /* ── MOVE / SKILL DATABASE ────────────────────────────────── */
+    const POKEMON_TYPES = {
+        // Fire
+        4: 'fire', 6: 'fire', 77: 'fire', 155: 'fire', 390: 'fire',
+        255: 'fire', 498: 'fire', 607: 'fire', 653: 'fire',
+        // Water
+        7: 'water', 54: 'water', 129: 'water', 131: 'water', 158: 'water',
+        183: 'water', 258: 'water', 349: 'water', 393: 'water',
+        501: 'water', 656: 'water',
+        // Electric
+        25: 'electric', 145: 'electric', 172: 'electric', 179: 'electric',
+        403: 'electric', 479: 'electric', 587: 'electric',
+        // Grass
+        1: 'grass', 187: 'grass', 252: 'grass', 387: 'grass',
+        495: 'grass', 650: 'grass',
+        // Psychic
+        63: 'psychic', 150: 'psychic', 151: 'psychic', 196: 'psychic',
+        280: 'psychic',
+        // Dark
+        52: 'dark', 197: 'dark', 198: 'dark', 430: 'dark', 570: 'dark',
+        // Dragon
+        147: 'dragon', 149: 'dragon', 246: 'dragon', 371: 'dragon',
+        384: 'dragon', 443: 'dragon', 635: 'dragon', 714: 'dragon',
+        // Ice
+        144: 'ice', 225: 'ice',
+        // Ghost
+        92: 'ghost', 425: 'ghost', 426: 'ghost',
+        // Fighting
+        447: 'fighting', 304: 'fighting',
+        // Fairy
+        39: 'fairy', 175: 'fairy', 176: 'fairy', 468: 'fairy', 427: 'fairy',
+        // Normal
+        133: 'normal', 143: 'normal',
+        // Rock
+        74: 'rock', 104: 'rock', 142: 'rock',
+        // Bug
+        12: 'bug', 123: 'bug', 267: 'bug',
+        // Flying
+        17: 'flying', 18: 'flying', 21: 'flying', 22: 'flying',
+        146: 'flying', 249: 'flying', 250: 'flying', 277: 'flying',
+        278: 'flying', 333: 'flying', 334: 'flying', 380: 'flying',
+        381: 'flying', 469: 'flying', 472: 'flying', 521: 'flying',
+        527: 'flying', 628: 'flying', 641: 'flying', 643: 'flying',
+        644: 'flying', 661: 'flying', 663: 'flying',
+        // Poison
+        41: 'poison', 49: 'poison',
+        // Ground
+        330: 'ground',
+    };
+
+    const MOVE_DATA = {
+        fire:     { moves: ['Flamethrower', 'Fire Blast', 'Ember', 'Fire Punch'],       color: '#FF4500', sparkColors: ['#FF4500','#FF6347','#FFD700','#FF8C00'], emoji: '🔥' },
+        water:    { moves: ['Hydro Pump', 'Surf', 'Water Gun', 'Aqua Tail'],            color: '#1E90FF', sparkColors: ['#1E90FF','#00BFFF','#87CEEB','#4169E1'], emoji: '💧' },
+        electric: { moves: ['Thunderbolt', 'Thunder', 'Spark', 'Volt Tackle'],          color: '#FFD700', sparkColors: ['#FFD700','#FFF700','#FFFF00','#FFA500'], emoji: '⚡' },
+        grass:    { moves: ['Solar Beam', 'Razor Leaf', 'Vine Whip', 'Leaf Storm'],     color: '#32CD32', sparkColors: ['#32CD32','#228B22','#90EE90','#00FF00'], emoji: '🍃' },
+        psychic:  { moves: ['Psychic', 'Psybeam', 'Confusion', 'Future Sight'],        color: '#FF69B4', sparkColors: ['#FF69B4','#DA70D6','#EE82EE','#FF1493'], emoji: '🔮' },
+        dark:     { moves: ['Dark Pulse', 'Shadow Ball', 'Crunch', 'Night Slash'],      color: '#483D8B', sparkColors: ['#483D8B','#6A5ACD','#191970','#800080'], emoji: '🌑' },
+        dragon:   { moves: ['Dragon Claw', 'Draco Meteor', 'Dragon Pulse', 'Outrage'],  color: '#7B68EE', sparkColors: ['#7B68EE','#6A5ACD','#9370DB','#8A2BE2'], emoji: '🐉' },
+        ice:      { moves: ['Ice Beam', 'Blizzard', 'Frost Breath', 'Ice Punch'],       color: '#00CED1', sparkColors: ['#00CED1','#AFEEEE','#E0FFFF','#B0E0E6'], emoji: '❄️' },
+        ghost:    { moves: ['Shadow Ball', 'Hex', 'Phantom Force', 'Night Shade'],      color: '#8B008B', sparkColors: ['#8B008B','#9932CC','#BA55D3','#4B0082'], emoji: '👻' },
+        fighting: { moves: ['Close Combat', 'Aura Sphere', 'Brick Break', 'Hi Jump Kick'], color: '#CD853F', sparkColors: ['#CD853F','#D2691E','#F4A460','#FF8C00'], emoji: '👊' },
+        fairy:    { moves: ['Moonblast', 'Dazzling Gleam', 'Play Rough', 'Fairy Wind'], color: '#FFB6C1', sparkColors: ['#FFB6C1','#FF69B4','#FFC0CB','#FF1493'], emoji: '✨' },
+        normal:   { moves: ['Tackle', 'Hyper Beam', 'Body Slam', 'Quick Attack'],       color: '#C0C0C0', sparkColors: ['#C0C0C0','#DCDCDC','#FFF','#A9A9A9'],    emoji: '💥' },
+        rock:     { moves: ['Rock Slide', 'Stone Edge', 'Rock Throw', 'Smack Down'],    color: '#B8860B', sparkColors: ['#B8860B','#DAA520','#CD853F','#8B7355'], emoji: '🪨' },
+        bug:      { moves: ['X-Scissor', 'Bug Buzz', 'Signal Beam', 'Fury Cutter'],     color: '#9ACD32', sparkColors: ['#9ACD32','#6B8E23','#556B2F','#ADFF2F'], emoji: '🐛' },
+        flying:   { moves: ['Air Slash', 'Hurricane', 'Brave Bird', 'Aerial Ace'],      color: '#87CEEB', sparkColors: ['#87CEEB','#B0C4DE','#ADD8E6','#4682B4'], emoji: '🌪️' },
+        poison:   { moves: ['Sludge Bomb', 'Poison Jab', 'Toxic', 'Venoshock'],         color: '#9932CC', sparkColors: ['#9932CC','#8B008B','#BA55D3','#DA70D6'], emoji: '☠️' },
+        ground:   { moves: ['Earthquake', 'Earth Power', 'Dig', 'Mud Shot'],            color: '#D2B48C', sparkColors: ['#D2B48C','#DEB887','#F4A460','#8B7355'], emoji: '🌍' },
+    };
+
+    function getMovesForPokemon(id) {
+        const type = POKEMON_TYPES[id] || 'normal';
+        return MOVE_DATA[type] || MOVE_DATA.normal;
+    }
+
+    /* ── Show move name floating above attacker ──────────────── */
+    function showMoveName(pk, moveName, color, emoji) {
+        const label = document.createElement('div');
+        label.textContent = `${emoji} ${moveName}`;
+        Object.assign(label.style, {
+            position: 'absolute', top: '-24px', left: '50%',
+            transform: 'translateX(-50%) scale(0)',
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '800',
+            fontSize: '11px', color: color,
+            textShadow: `0 0 6px ${color}, 0 1px 3px rgba(0,0,0,0.9)`,
+            pointerEvents: 'none', zIndex: '10014', whiteSpace: 'nowrap',
+            letterSpacing: '0.5px', lineHeight: '1'
+        });
+        pk.el.appendChild(label);
+        label.animate([
+            { transform: 'translateX(-50%) scale(0) translateY(0)', opacity: 0 },
+            { transform: 'translateX(-50%) scale(1.1) translateY(-2px)', opacity: 1, offset: 0.2 },
+            { transform: 'translateX(-50%) scale(1) translateY(-4px)', opacity: 1, offset: 0.6 },
+            { transform: 'translateX(-50%) scale(0.8) translateY(-14px)', opacity: 0 }
+        ], { duration: 900, fill: 'forwards', easing: 'ease-out' }).onfinish = () => label.remove();
+    }
+
+    /* ── Type-colored battle sparks ──────────────────────────── */
+    function spawnBattleSparks(x, y, sparkColors) {
+        const colors = sparkColors || ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
+        for (let i = 0; i < 6; i++) {
+            const s = document.createElement('div');
+            const sz = rand(3, 6);
+            Object.assign(s.style, {
+                position: 'absolute', width: sz+'px', height: sz+'px',
+                borderRadius: '50%', background: pick(colors),
+                left: x+'px', top: y+'px',
+                pointerEvents: 'none', zIndex: '10012',
+                boxShadow: `0 0 6px ${pick(colors)}`
+            });
+            container.appendChild(s);
+            const angle = (Math.PI*2/6)*i + rand(-0.3,0.3);
+            const dist = rand(12, 35);
+            s.animate([
+                { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity: 0 }
+            ], { duration: 350, easing: 'ease-out', fill: 'forwards' }).onfinish = () => s.remove();
+        }
+    }
+
+    /* ── Type-specific PARTICLE EFFECTS ─────────────────────── */
+    function spawnTypeEffect(x, y, type) {
+        const data = MOVE_DATA[type] || MOVE_DATA.normal;
+        // Ring burst (kept)
+        const ring = document.createElement('div');
+        Object.assign(ring.style, {
+            position: 'absolute', left: x+'px', top: y+'px',
+            width: '10px', height: '10px', borderRadius: '50%',
+            border: `2px solid ${data.color}`,
+            boxShadow: `0 0 8px ${data.color}, inset 0 0 4px ${data.color}40`,
+            transform: 'translate(-50%,-50%) scale(0.5)',
+            pointerEvents: 'none', zIndex: '10013', opacity: '0.9'
+        });
+        container.appendChild(ring);
+        ring.animate([
+            { transform: 'translate(-50%,-50%) scale(0.5)', opacity: 0.9 },
+            { transform: 'translate(-50%,-50%) scale(3)', opacity: 0 }
+        ], { duration: 400, easing: 'ease-out', fill: 'forwards' }).onfinish = () => ring.remove();
+
+        // Type-specific particles
+        const FX = {
+            fire: () => {
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🔥','🔥','✦','●']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(8,16)+'px', pointerEvents:'none', zIndex:'10014',
+                        filter: `drop-shadow(0 0 4px #FF4500)`
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(1)', opacity:1 },
+                        { transform:`translateY(${-rand(25,55)}px) translateX(${rand(-12,12)}px) scale(0.3)`, opacity:0 }
+                    ], { duration: rand(400,700), easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            water: () => {
+                for (let i = 0; i < 10; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['💧','💦','•','○']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+'px', top:y+'px',
+                        fontSize: rand(6,14)+'px', color:'#1E90FF',
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 3px #00BFFF)'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/10)*i + rand(-0.3,0.3);
+                    const dist = rand(18,45);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1.2)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration: rand(350,550), easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            electric: () => {
+                // Lightning bolts
+                for (let i = 0; i < 4; i++) {
+                    const bolt = document.createElement('div');
+                    bolt.textContent = '⚡';
+                    Object.assign(bolt.style, {
+                        position:'absolute', left:x+rand(-20,20)+'px', top:y+rand(-25,5)+'px',
+                        fontSize: rand(14,24)+'px', pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 6px #FFD700) drop-shadow(0 0 12px #FFF700)',
+                        opacity:'0'
+                    });
+                    container.appendChild(bolt);
+                    bolt.animate([
+                        { opacity:0, transform:'scale(0.3) rotate(-20deg)' },
+                        { opacity:1, transform:'scale(1.2) rotate(0deg)', offset:0.15 },
+                        { opacity:1, transform:'scale(1) rotate(5deg)', offset:0.4 },
+                        { opacity:0, transform:'scale(0.5) translateY(-15px) rotate(-10deg)' }
+                    ], { duration: rand(350,550), delay: i*60, fill:'forwards' }).onfinish = () => bolt.remove();
+                }
+                // Electric crackle lines
+                for (let i = 0; i < 6; i++) {
+                    const line = document.createElement('div');
+                    const len = rand(12,28);
+                    Object.assign(line.style, {
+                        position:'absolute', left:x+'px', top:y+'px',
+                        width:len+'px', height:'2px',
+                        background:'linear-gradient(90deg, #FFD700, #FFF700, transparent)',
+                        transform:`rotate(${rand(0,360)}deg)`, transformOrigin:'left center',
+                        pointerEvents:'none', zIndex:'10014',
+                        boxShadow:'0 0 4px #FFD700'
+                    });
+                    container.appendChild(line);
+                    line.animate([
+                        { opacity:1, width:len+'px' },
+                        { opacity:0, width:'0px' }
+                    ], { duration: rand(200,400), delay: rand(0,150), fill:'forwards' }).onfinish = () => line.remove();
+                }
+            },
+            grass: () => {
+                const leaves = ['🍃','🌿','🍀','🌱'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(leaves);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(8,16)+'px', pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    const dx = rand(-35,35), dy = rand(-40,-10);
+                    p.animate([
+                        { transform:'scale(1) rotate(0deg)', opacity:1 },
+                        { transform:`translate(${dx}px,${dy}px) scale(0.4) rotate(${rand(-180,180)}deg)`, opacity:0 }
+                    ], { duration: rand(500,800), delay: i*40, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ice: () => {
+                const flakes = ['❄️','❄','✧','✦'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(flakes);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-15,15)+'px', top:y+rand(-15,15)+'px',
+                        fontSize: rand(8,16)+'px', color:'#B0E0E6',
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 4px #00CED1)'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.2) rotate(0deg)', opacity:1 },
+                        { transform:`translate(${rand(-25,25)}px,${rand(15,35)}px) scale(0) rotate(${rand(60,180)}deg)`, opacity:0 }
+                    ], { duration: rand(500,800), delay: i*50, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            psychic: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🔮','✦','◆','★']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+'px', top:y+'px',
+                        fontSize: rand(8,14)+'px', color:'#FF69B4',
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 5px #FF69B4)'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/6)*i;
+                    const dist = rand(20,40);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(0) rotate(0deg)', opacity:0 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist*0.5}px), calc(-50% + ${Math.sin(angle)*dist*0.5}px)) scale(1.3) rotate(180deg)`, opacity:1, offset:0.4 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(360deg)`, opacity:0 }
+                    ], { duration: rand(500,700), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ghost: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['👻','💀','🌑','◉']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(10,18)+'px', pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 6px #8B008B)'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(0.5)', opacity:0 },
+                        { transform:'translateY(-5px) scale(1.2)', opacity:0.9, offset:0.3 },
+                        { transform:`translateY(${-rand(20,40)}px) translateX(${rand(-20,20)}px) scale(0)`, opacity:0 }
+                    ], { duration: rand(600,900), delay: i*80, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            dragon: () => {
+                for (let i = 0; i < 7; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🐉','💎','✦','◆']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+'px', top:y+'px',
+                        fontSize: rand(8,16)+'px', color: pick(['#7B68EE','#9370DB','#8A2BE2']),
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 4px #7B68EE)'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/7)*i;
+                    const dist = rand(20,45);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1.5)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(${rand(-90,90)}deg)`, opacity:0 }
+                    ], { duration: rand(400,650), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            dark: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    const sz = rand(6,14);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-12,12)+'px', top:y+rand(-12,12)+'px',
+                        width:sz+'px', height:sz+'px', borderRadius:'50%',
+                        background:'radial-gradient(circle, #483D8B 0%, #191970 60%, transparent 100%)',
+                        pointerEvents:'none', zIndex:'10014',
+                        boxShadow:'0 0 8px #191970'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.5)', opacity:0.8 },
+                        { transform:`translate(${rand(-20,20)}px,${rand(-20,20)}px) scale(0)`, opacity:0 }
+                    ], { duration: rand(400,700), delay: i*50, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            fighting: () => {
+                const fists = ['👊','💢','💥','✊'];
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(fists);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-15,15)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(10,18)+'px', pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'scale(0) rotate(-30deg)', opacity:0 },
+                        { transform:'scale(1.3) rotate(0deg)', opacity:1, offset:0.2 },
+                        { transform:`translate(${rand(-20,20)}px,${rand(-25,5)}px) scale(0) rotate(${rand(-45,45)}deg)`, opacity:0 }
+                    ], { duration: rand(350,550), delay: i*60, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            fairy: () => {
+                const stars = ['✨','⭐','✦','💖','★'];
+                for (let i = 0; i < 8; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(stars);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(6,14)+'px', pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 3px #FFB6C1)'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/8)*i;
+                    const dist = rand(15,35);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(0)', opacity:0 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist*0.6}px), calc(-50% + ${Math.sin(angle)*dist*0.6}px)) scale(1.3)`, opacity:1, offset:0.35 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration: rand(500,750), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            flying: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🌪️','💨','〰','≋']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-10,10)+'px', top:y+rand(-5,5)+'px',
+                        fontSize: rand(10,18)+'px', color:'#87CEEB',
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 3px #87CEEB)'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'translateX(0) scale(1)', opacity:1 },
+                        { transform:`translateX(${rand(25,50) * (Math.random()<0.5?1:-1)}px) translateY(${rand(-15,15)}px) scale(0.3)`, opacity:0 }
+                    ], { duration: rand(400,650), delay: i*50, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            poison: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['☠️','💀','●','◉']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-10,10)+'px', top:y+rand(-5,10)+'px',
+                        fontSize: rand(8,14)+'px', color:'#9932CC',
+                        pointerEvents:'none', zIndex:'10014',
+                        filter:'drop-shadow(0 0 4px #9932CC)'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1) translateY(0)', opacity:0.9 },
+                        { transform:`scale(0.3) translateY(${-rand(20,40)}px) translateX(${rand(-15,15)}px)`, opacity:0 }
+                    ], { duration: rand(500,750), delay: i*60, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            rock: () => {
+                for (let i = 0; i < 6; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🪨','◆','■','▲']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-8,8)+'px', top:y+rand(-8,8)+'px',
+                        fontSize: rand(8,14)+'px', color:'#B8860B',
+                        pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'scale(1.2) translateY(0)', opacity:1 },
+                        { transform:`translate(${rand(-18,18)}px,${rand(15,35)}px) scale(0) rotate(${rand(-90,90)}deg)`, opacity:0 }
+                    ], { duration: rand(350,550), delay: i*40, easing:'ease-in', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            bug: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['🐛','✂','✦','×']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-12,12)+'px', top:y+rand(-12,12)+'px',
+                        fontSize: rand(8,14)+'px', color:'#9ACD32',
+                        pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/5)*i;
+                    const dist = rand(15,30);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0) rotate(180deg)`, opacity:0 }
+                    ], { duration: rand(300,500), fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            ground: () => {
+                for (let i = 0; i < 7; i++) {
+                    const p = document.createElement('div');
+                    const sz = rand(4,8);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-15,15)+'px', top:y+5+'px',
+                        width:sz+'px', height:sz+'px', borderRadius: rand(0,1) > 0.5 ? '50%' : '2px',
+                        background: pick(['#D2B48C','#DEB887','#8B7355','#CD853F']),
+                        pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    p.animate([
+                        { transform:'translateY(0) scale(1)', opacity:1 },
+                        { transform:`translate(${rand(-20,20)}px,${-rand(15,35)}px) scale(0)`, opacity:0 }
+                    ], { duration: rand(350,550), delay: i*30, easing:'ease-out', fill:'forwards' }).onfinish = () => p.remove();
+                }
+            },
+            normal: () => {
+                for (let i = 0; i < 5; i++) {
+                    const p = document.createElement('div');
+                    p.textContent = pick(['💥','✦','★','●']);
+                    Object.assign(p.style, {
+                        position:'absolute', left:x+rand(-10,10)+'px', top:y+rand(-10,10)+'px',
+                        fontSize: rand(8,14)+'px', color:'#C0C0C0',
+                        pointerEvents:'none', zIndex:'10014'
+                    });
+                    container.appendChild(p);
+                    const angle = (Math.PI*2/5)*i;
+                    const dist = rand(15,30);
+                    p.animate([
+                        { transform:'translate(-50%,-50%) scale(1)', opacity:1 },
+                        { transform:`translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity:0 }
+                    ], { duration: 400, fill:'forwards' }).onfinish = () => p.remove();
+                }
+            }
+        };
+
+        (FX[type] || FX.normal)();
+    }
+
+    function findBattlePair() {
+        // All active Pokemon (ground + flyers)
+        const all = [
+            ...pokemons.filter(p => p.state !== 'frozen' && p.state !== 'battling'),
+            ...flyers.filter(f => f.state !== 'frozen' && f.state !== 'battling')
+        ];
+        // Flyers use wider proximity since they move faster
+        const FLYER_PROXIMITY = 160;
+        for (let i = 0; i < all.length; i++) {
+            for (let j = i+1; j < all.length; j++) {
+                const dx = all[i].x - all[j].x;
+                const dy = all[i].y - all[j].y;
+                const dist = Math.sqrt(dx*dx+dy*dy);
+                const isFlying = flyers.includes(all[i]) || flyers.includes(all[j]);
+                const threshold = isFlying ? FLYER_PROXIMITY : BATTLE_PROXIMITY;
+                if (dist < threshold) {
+                    return [all[i], all[j]];
+                }
+            }
+        }
+        return null;
+    }
+
+    /* ── Lunge attack with move name + type effects ──────────── */
+    function lungeAttack(attacker, defender, cb) {
+        const dir = attacker.x < defender.x ? 1 : -1;
+        const moveData = getMovesForPokemon(attacker.id);
+        const moveName = pick(moveData.moves);
+
+        // Show move name above attacker
+        showMoveName(attacker, moveName, moveData.color, moveData.emoji);
+
+        attacker.el.animate([
+            { transform: `translate3d(${attacker.x}px, ${attacker.y}px, 0) scaleX(${dir > 0 ? 1 : -1})` },
+            { transform: `translate3d(${attacker.x + dir*22}px, ${attacker.y}px, 0) scaleX(${dir > 0 ? 1 : -1})`, offset: 0.4 },
+            { transform: `translate3d(${attacker.x}px, ${attacker.y}px, 0) scaleX(${dir > 0 ? 1 : -1})` }
+        ], { duration: 300, easing: 'ease-in-out' });
+
+        setTimeout(() => {
+            const type = POKEMON_TYPES[attacker.id] || 'normal';
+            // Type-colored hit flash
+            defender.img.animate([
+                { filter: 'brightness(1)' },
+                { filter: `brightness(2.5) hue-rotate(${type === 'fire' ? '0' : type === 'water' ? '200' : type === 'electric' ? '50' : '0'}deg)`, offset: 0.3 },
+                { filter: 'brightness(0.6)', offset: 0.5 },
+                { filter: 'brightness(1)' }
+            ], { duration: 350, easing: 'ease-out' });
+
+            const hitX = defender.x + SPRITE_SIZE/2;
+            const hitY = defender.y + SPRITE_SIZE/2;
+            spawnBattleSparks(hitX, hitY, moveData.sparkColors);
+            spawnTypeEffect(hitX, hitY, type);
+            if (cb) cb();
+        }, 180);
+    }
+
+    function startHomeBattle(pkA, pkB) {
+        if (battleActive) return;
+        battleActive = true;
+        pkA.state = 'battling';
+        pkB.state = 'battling';
+        pkA.facingRight = pkA.x < pkB.x;
+        pkB.facingRight = pkB.x < pkA.x;
+        pkA._applyPos();
+        pkB._applyPos();
+        addHpBar(pkA);
+        addHpBar(pkB);
+
+        const totalRounds = 3 + Math.floor(Math.random() * 3);
+        let round = 0;
+        function doRound() {
+            if (pkA._hp <= 0 || pkB._hp <= 0 || round >= totalRounds) {
+                if (pkA._hp === pkB._hp) {
+                    if (Math.random() < 0.5) pkA._hp = 0; else pkB._hp = 0;
+                }
+                finishBattle(pkA, pkB);
+                return;
+            }
+            round++;
+            const atk = round % 2 === 1 ? pkA : pkB;
+            const def = round % 2 === 1 ? pkB : pkA;
+            const dmg = typeof calcTypeDamage === 'function'
+                ? calcTypeDamage(15 + Math.floor(Math.random() * 25), atk, def)
+                : 15 + Math.floor(Math.random() * 25);
+            lungeAttack(atk, def, () => {
+                def._hp = Math.max(0, def._hp - dmg);
+                updateHpBar(def);
+            });
+            setTimeout(doRound, 700);
+        }
+        setTimeout(doRound, 400);
+    }
+
+    function finishBattle(pkA, pkB) {
+        const aWins = pkA._hp > pkB._hp;
+        const winner = aWins ? pkA : pkB;
+        const loser = aWins ? pkB : pkA;
+
+        winner.img.animate([
+            { transform: 'translateY(0)' },
+            { transform: 'translateY(-12px)', offset: 0.4 },
+            { transform: 'translateY(0)' }
+        ], { duration: 400, easing: 'ease-in-out', iterations: 2 });
+
+        const winLabel = document.createElement('div');
+        winLabel.textContent = 'WIN!';
+        Object.assign(winLabel.style, {
+            position: 'absolute', top: '-28px', left: '50%',
+            transform: 'translateX(-50%) scale(0)',
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
+            fontSize: '14px', color: '#4ECDC4',
+            textShadow: '0 0 8px #4ECDC4, 0 2px 4px rgba(0,0,0,0.8)',
+            pointerEvents: 'none', zIndex: '10015', whiteSpace: 'nowrap',
+            letterSpacing: '2px'
+        });
+        winner.el.appendChild(winLabel);
+        winLabel.animate([
+            { transform: 'translateX(-50%) scale(0)', opacity: 0 },
+            { transform: 'translateX(-50%) scale(1.2)', opacity: 1, offset: 0.3 },
+            { transform: 'translateX(-50%) translateY(-10px) scale(1)', opacity: 1, offset: 0.7 },
+            { transform: 'translateX(-50%) translateY(-20px) scale(0.8)', opacity: 0 }
+        ], { duration: 1500, fill: 'forwards' }).onfinish = () => winLabel.remove();
+
+        setTimeout(() => {
+            removeHpBar(winner);
+            // Resume movement based on type
+            const isFlyer = flyers.includes(winner);
+            if (isFlyer) {
+                winner.state = undefined; // flyers use undefined as normal state
+            } else {
+                winner.state = 'walk';
+                winner.vx = rand(MIN_SPEED, MAX_SPEED) * (winner.facingRight ? 1 : -1);
+            }
+            winner.img.style.filter = 'drop-shadow(0 0 10px #4ECDC4) brightness(1.15)';
+            setTimeout(() => {
+                winner.img.style.transition = 'filter 2s';
+                winner.img.style.filter = '';
+                setTimeout(() => { winner.img.style.transition = 'filter 0.3s'; }, 2000);
+            }, 2000);
+        }, 800);
+
+        setTimeout(() => {
+            removeHpBar(loser);
+            loser.el.style.transition = 'opacity 0.6s, transform 0.6s';
+            loser.el.style.opacity = '0';
+            loser.el.style.transform += ' scale(0.3)';
+            setTimeout(() => {
+                loser.el.remove();
+                const gi = pokemons.indexOf(loser);
+                if (gi >= 0) pokemons.splice(gi, 1);
+                const fi = flyers.indexOf(loser);
+                if (fi >= 0) flyers.splice(fi, 1);
+                spawnNewPokemon();
+                battleActive = false;
+            }, 700);
+        }, 600);
+    }
+
+    function checkForBattle() {
+        if (battleActive || isThrowing) return;
+        if (!canBattle()) return; // 6-hour cooldown
+        if (Math.random() > BATTLE_CHANCE) return;
+        const pair = findBattlePair();
+        if (pair) {
+            markBattled();
+            startHomeBattle(pair[0], pair[1]);
+        }
+    }
+
+
 
     /* ── Spawn a brand-new Pokemon (not already on screen) ──── */
     function spawnNewPokemon() {
@@ -496,312 +1196,10 @@
         }
     }
 
-    /* ── Remove a random Pokemon with fade-out ─────────────── */
-    function retirePokemon() {
-        // Prefer ground Pokemon if there are some, else flyers
-        const allActive = [...pokemons, ...flyers].filter(p => p.state !== 'frozen');
-        if (allActive.length <= 2) return null; // keep at least 2
-        const victim = allActive[Math.floor(Math.random() * allActive.length)];
-        victim.el.style.transition = 'opacity 0.8s';
-        victim.el.style.opacity = '0';
-        setTimeout(() => {
-            victim.el.remove();
-            const gi = pokemons.indexOf(victim);
-            if (gi >= 0) pokemons.splice(gi, 1);
-            const fi = flyers.indexOf(victim);
-            if (fi >= 0) flyers.splice(fi, 1);
-        }, 800);
-        return victim;
-    }
-
-    /* ── Pick 2 Pokemon for battle ────────────────────────── */
-    function pickBattlePair() {
-        const all = [...pokemons, ...flyers].filter(p => p.state !== 'frozen');
-        if (all.length < 2) return null;
-        const shuffled = all.sort(() => Math.random() - 0.5);
-        return [shuffled[0], shuffled[1]];
-    }
-
-    /* ── Start a battle ───────────────────────────────────── */
-    function triggerBattle() {
-        if (battleActive || isThrowing) return;
-        const pair = pickBattlePair();
-        if (!pair) return;
-        const [pkA, pkB] = pair;
-
-        battleActive = true;
-        pkA.state = 'frozen';
-        pkB.state = 'frozen';
-
-        // Battle overlay
-        const overlay = document.createElement('div');
-        Object.assign(overlay.style, {
-            position: 'fixed', inset: '0', zIndex: '20000',
-            background: 'rgba(0,0,0,0)', pointerEvents: 'none',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-        });
-        document.body.appendChild(overlay);
-
-        overlay.animate([
-            { background: 'rgba(0,0,0,0)' },
-            { background: 'rgba(0,0,0,0.75)' }
-        ], { duration: 400, fill: 'forwards' });
-
-        // Arena
-        const arena = document.createElement('div');
-        Object.assign(arena.style, {
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: '20px', transform: 'scale(0)'
-        });
-
-        const sideA = buildSide(pkA.id, 'left');
-        const sideB = buildSide(pkB.id, 'right');
-
-        const vs = document.createElement('div');
-        Object.assign(vs.style, {
-            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
-            fontSize: '48px', color: '#FFD700',
-            textShadow: '0 0 20px #FFD700, 0 0 40px #ff6e84, 0 4px 8px rgba(0,0,0,0.8)',
-            letterSpacing: '4px', transform: 'scale(0)'
-        });
-        vs.textContent = 'VS';
-
-        arena.appendChild(sideA.el);
-        arena.appendChild(vs);
-        arena.appendChild(sideB.el);
-        overlay.appendChild(arena);
-
-        setTimeout(() => {
-            arena.animate([
-                { transform: 'scale(0) rotate(-10deg)', opacity: 0 },
-                { transform: 'scale(1.1) rotate(2deg)', opacity: 1, offset: 0.6 },
-                { transform: 'scale(1) rotate(0)', opacity: 1 }
-            ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
-        }, 300);
-
-        setTimeout(() => {
-            vs.animate([
-                { transform: 'scale(0) rotate(-20deg)' },
-                { transform: 'scale(1.3) rotate(5deg)', offset: 0.5 },
-                { transform: 'scale(1) rotate(0)' }
-            ], { duration: 400, fill: 'forwards', easing: 'ease-out' });
-        }, 600);
-
-        setTimeout(() => runBattleRounds(overlay, sideA, sideB, pkA, pkB), 1200);
-    }
-
-    /* ── Build battle side panel ──────────────────────────── */
-    function buildSide(id, side) {
-        const el = document.createElement('div');
-        Object.assign(el.style, {
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: '8px', minWidth: '100px'
-        });
-        const img = document.createElement('img');
-        img.src = spriteURL(id);
-        img.draggable = false;
-        Object.assign(img.style, {
-            width: '96px', height: '96px', imageRendering: 'pixelated',
-            filter: 'drop-shadow(0 0 12px rgba(151,169,255,0.5))',
-            transform: side === 'right' ? 'scaleX(-1)' : 'scaleX(1)'
-        });
-        img.addEventListener('error', () => { img.src = staticURL(id); }, { once: true });
-
-        const hpWrap = document.createElement('div');
-        Object.assign(hpWrap.style, {
-            width: '90px', height: '8px', borderRadius: '4px',
-            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
-            overflow: 'hidden'
-        });
-        const hpBar = document.createElement('div');
-        Object.assign(hpBar.style, {
-            width: '100%', height: '100%', borderRadius: '4px',
-            background: 'linear-gradient(90deg, #4ECDC4, #44d62c)',
-            transition: 'width 0.4s ease, background 0.4s'
-        });
-        hpWrap.appendChild(hpBar);
-
-        const label = document.createElement('div');
-        Object.assign(label.style, {
-            fontSize: '10px', fontFamily: 'monospace', color: '#97a9ff',
-            textShadow: '0 0 6px #97a9ff', letterSpacing: '1px'
-        });
-        label.textContent = `#${id}`;
-
-        el.appendChild(img);
-        el.appendChild(hpWrap);
-        el.appendChild(label);
-        return { el, img, hpBar, hp: 100 };
-    }
-
-    /* ── Run battle rounds ────────────────────────────────── */
-    function runBattleRounds(overlay, sideA, sideB, pkA, pkB) {
-        const rounds = 3 + Math.floor(Math.random() * 3);
-        let round = 0;
-
-        function doRound() {
-            if (sideA.hp <= 0 || sideB.hp <= 0 || round >= rounds) {
-                if (sideA.hp === sideB.hp) {
-                    if (Math.random() < 0.5) sideA.hp = 0; else sideB.hp = 0;
-                }
-                endBattle(overlay, sideA, sideB, pkA, pkB, sideA.hp > sideB.hp);
-                return;
-            }
-            round++;
-            const atk = round % 2 === 1 ? sideA : sideB;
-            const def = round % 2 === 1 ? sideB : sideA;
-            const dmg = 15 + Math.floor(Math.random() * 25);
-            const dir = atk === sideA ? 1 : -1;
-
-            atk.img.animate([
-                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(0)` },
-                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(${dir * 30}px)`, offset: 0.3 },
-                { transform: `scaleX(${atk === sideB ? -1 : 1}) translateX(0)` }
-            ], { duration: 300, easing: 'ease-in-out' });
-
-            setTimeout(() => {
-                def.img.animate([
-                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' },
-                    { filter: 'brightness(3) drop-shadow(0 0 20px #ff3030)', offset: 0.3 },
-                    { filter: 'brightness(0.5)', offset: 0.5 },
-                    { filter: 'brightness(1) drop-shadow(0 0 12px rgba(151,169,255,0.5))' }
-                ], { duration: 400, easing: 'ease-out' });
-
-                const rect = def.img.getBoundingClientRect();
-                spawnHitSparks(rect.left + rect.width/2, rect.top + rect.height/2);
-
-                def.hp = Math.max(0, def.hp - dmg);
-                def.hpBar.style.width = def.hp + '%';
-                if (def.hp < 30) def.hpBar.style.background = 'linear-gradient(90deg, #ff3030, #ff6347)';
-                else if (def.hp < 60) def.hpBar.style.background = 'linear-gradient(90deg, #FFD700, #FFA500)';
-            }, 200);
-
-            setTimeout(doRound, 800);
-        }
-        doRound();
-    }
-
-    /* ── Hit sparks ───────────────────────────────────────── */
-    function spawnHitSparks(x, y) {
-        const colors = ['#FFD700', '#FF6347', '#FFF', '#ff3030'];
-        for (let i = 0; i < 6; i++) {
-            const s = document.createElement('div');
-            const sz = rand(3, 6);
-            Object.assign(s.style, {
-                position: 'fixed', width: sz+'px', height: sz+'px', borderRadius: '50%',
-                background: pick(colors), left: x+'px', top: y+'px',
-                pointerEvents: 'none', zIndex: '20002',
-                boxShadow: `0 0 6px ${pick(colors)}`
-            });
-            document.body.appendChild(s);
-            const angle = (Math.PI*2/6)*i + rand(-0.3, 0.3);
-            const dist = rand(15, 40);
-            s.animate([
-                { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
-                { transform: `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px)) scale(0)`, opacity: 0 }
-            ], { duration: 350, easing: 'ease-out', fill: 'forwards' }).onfinish = () => s.remove();
-        }
-    }
-
-    /* ── End battle ───────────────────────────────────────── */
-    function endBattle(overlay, sideA, sideB, pkA, pkB, aWins) {
-        const winner = aWins ? sideA : sideB;
-        const loser = aWins ? sideB : sideA;
-        const winPk = aWins ? pkA : pkB;
-        const losePk = aWins ? pkB : pkA;
-
-        loser.img.animate([
-            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(0)`, opacity: 1 },
-            { transform: `scaleX(${loser === sideB ? -1 : 1}) translateY(30px) rotate(${rand(-20,20)}deg)`, opacity: 0 }
-        ], { duration: 500, fill: 'forwards', easing: 'ease-in' });
-
-        winner.img.animate([
-            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` },
-            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(-15px)`, offset: 0.4 },
-            { transform: `scaleX(${winner === sideB ? -1 : 1}) translateY(0)` }
-        ], { duration: 500, easing: 'ease-in-out', iterations: 2 });
-
-        // WIN text
-        const winText = document.createElement('div');
-        winText.textContent = 'WIN!';
-        Object.assign(winText.style, {
-            position: 'fixed', left: '50%', top: '38%',
-            transform: 'translate(-50%,-50%) scale(0)',
-            fontFamily: "'Space Grotesk', sans-serif", fontWeight: '900',
-            fontSize: '42px', color: '#4ECDC4',
-            textShadow: '0 0 15px #4ECDC4, 0 0 30px #44d62c, 0 4px 8px rgba(0,0,0,0.8)',
-            pointerEvents: 'none', zIndex: '20003', letterSpacing: '6px'
-        });
-        document.body.appendChild(winText);
-        winText.animate([
-            { transform: 'translate(-50%,-50%) scale(0)', opacity: 0 },
-            { transform: 'translate(-50%,-50%) scale(1.3)', opacity: 1, offset: 0.4 },
-            { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }
-        ], { duration: 500, fill: 'forwards', easing: 'ease-out' });
-
-        // Close overlay
-        setTimeout(() => {
-            overlay.animate([
-                { background: 'rgba(0,0,0,0.75)' },
-                { background: 'rgba(0,0,0,0)' }
-            ], { duration: 400, fill: 'forwards' });
-            winText.animate([
-                { opacity: 1 }, { opacity: 0 }
-            ], { duration: 400, fill: 'forwards' }).onfinish = () => winText.remove();
-
-            setTimeout(() => {
-                overlay.remove();
-
-                // Winner resumes
-                const isFlyer = flyers.includes(winPk);
-                if (isFlyer) {
-                    winPk.state = undefined;
-                } else {
-                    winPk.state = 'walk';
-                    winPk.vx = rand(MIN_SPEED, MAX_SPEED) * (winPk.facingRight ? 1 : -1);
-                }
-                winPk.el.style.opacity = '1';
-                winPk.el.style.transition = 'none';
-                winPk.img.style.filter = 'drop-shadow(0 0 12px #4ECDC4) brightness(1.2)';
-                setTimeout(() => {
-                    winPk.img.style.transition = 'filter 2s';
-                    winPk.img.style.filter = '';
-                }, 3000);
-
-                // Loser disappears + replaced with new Pokemon
-                losePk.el.style.transition = 'opacity 0.5s';
-                losePk.el.style.opacity = '0';
-                setTimeout(() => {
-                    losePk.el.remove();
-                    const gi = pokemons.indexOf(losePk);
-                    if (gi >= 0) pokemons.splice(gi, 1);
-                    const fi = flyers.indexOf(losePk);
-                    if (fi >= 0) flyers.splice(fi, 1);
-
-                    // Spawn replacement
-                    spawnNewPokemon();
-                }, 600);
-
-                // Also randomly retire 0-1 more and spawn replacements
-                if (Math.random() < 0.5) {
-                    setTimeout(() => {
-                        retirePokemon();
-                        setTimeout(spawnNewPokemon, 1000);
-                    }, 1500);
-                }
-
-                battleActive = false;
-            }, 400);
-        }, 1800);
-    }
-
-    /* ── Timer: trigger battle every 2 minutes ─────────────── */
-    setInterval(triggerBattle, 2 * 60 * 1000);
-
-
     /* ══════════════════════════════════════════════════════════
      *  POKÉBALL THROWING SYSTEM
      * ══════════════════════════════════════════════════════════ */
+    let isThrowing = false;
 
     const CATCH_RATE = 0.35;          // 35% chance to catch
     const HIT_RADIUS = 90;           // px — how close click must be to a Pokémon
@@ -1118,6 +1516,482 @@
             ], { duration: 500, easing: 'cubic-bezier(.25,.46,.45,.94)', fill: 'forwards' }).onfinish = () => spark.remove();
         }
     }
+
+    /* ══════════════════════════════════════════════════════════
+     *  POKEMON NAME DATABASE
+     * ══════════════════════════════════════════════════════════ */
+    const POKEMON_NAMES = {
+        1:'Bulbasaur',4:'Charmander',6:'Charizard',7:'Squirtle',12:'Butterfree',
+        17:'Pidgeotto',18:'Pidgeot',21:'Spearow',22:'Fearow',25:'Pikachu',
+        39:'Jigglypuff',41:'Zubat',49:'Venomoth',52:'Meowth',54:'Psyduck',
+        58:'Growlithe',63:'Abra',74:'Geodude',77:'Ponyta',92:'Gastly',
+        104:'Cubone',123:'Scyther',129:'Magikarp',131:'Lapras',133:'Eevee',
+        142:'Aerodactyl',143:'Snorlax',144:'Articuno',145:'Zapdos',146:'Moltres',
+        147:'Dratini',149:'Dragonite',150:'Mewtwo',151:'Mew',155:'Cyndaquil',
+        158:'Totodile',172:'Pichu',175:'Togepi',176:'Togetic',179:'Mareep',
+        183:'Marill',187:'Hoppip',193:'Yanma',196:'Espeon',197:'Umbreon',
+        198:'Murkrow',225:'Delibird',226:'Mantine',227:'Skarmory',246:'Larvitar',
+        249:'Lugia',250:'Ho-Oh',252:'Treecko',255:'Torchic',258:'Mudkip',
+        267:'Beautifly',277:'Swellow',278:'Wingull',280:'Ralts',304:'Aron',
+        330:'Flygon',333:'Swablu',334:'Altaria',349:'Feebas',371:'Bagon',
+        380:'Latias',381:'Latios',384:'Rayquaza',387:'Turtwig',390:'Chimchar',
+        393:'Piplup',403:'Shinx',425:'Drifloon',426:'Drifblim',427:'Buneary',
+        430:'Honchkrow',443:'Gible',447:'Riolu',468:'Togekiss',469:'Yanmega',
+        472:'Gliscor',479:'Rotom',495:'Snivy',498:'Tepig',501:'Oshawott',
+        521:'Unfezant',527:'Woobat',570:'Zorua',587:'Emolga',607:'Litwick',
+        628:'Braviary',635:'Hydreigon',641:'Tornadus',643:'Reshiram',
+        644:'Zekrom',650:'Chespin',653:'Fennekin',656:'Froakie',661:'Fletchling',
+        663:'Talonflame',714:'Noibat'
+    };
+
+    /* ══════════════════════════════════════════════════════════
+     *  2. SHINY POKEMON SYSTEM
+     * ══════════════════════════════════════════════════════════ */
+    const SHINY_CHANCE = 0.05; // 5% = 1/20
+
+    function makeShiny(pk) {
+        pk.isShiny = true;
+        pk.img.style.filter = 'saturate(1.8) hue-rotate(40deg) brightness(1.15)';
+        // Sparkle aura
+        const sparkle = document.createElement('div');
+        sparkle.className = 'shiny-sparkle';
+        Object.assign(sparkle.style, {
+            position:'absolute', inset:'0', pointerEvents:'none', zIndex:'1'
+        });
+        pk.el.appendChild(sparkle);
+        // Continuous sparkle particles
+        pk._shinyInterval = setInterval(() => {
+            if (!pk.el.parentNode) { clearInterval(pk._shinyInterval); return; }
+            const s = document.createElement('div');
+            s.textContent = pick(['✦','✧','★','⭐']);
+            const isFlyer = flyers.includes(pk);
+            const sz = isFlyer ? FLYER_SIZE : SPRITE_SIZE;
+            Object.assign(s.style, {
+                position:'absolute', left: rand(0, sz)+'px', top: rand(0, sz)+'px',
+                fontSize: rand(6,12)+'px', color: pick(['#FFD700','#FFF','#FF69B4','#87CEEB']),
+                pointerEvents:'none', zIndex:'2',
+                textShadow: '0 0 4px #FFD700'
+            });
+            pk.el.appendChild(s);
+            s.animate([
+                { transform:'scale(0) rotate(0)', opacity:0 },
+                { transform:'scale(1.2) rotate(90deg)', opacity:1, offset:0.3 },
+                { transform:'scale(0) rotate(180deg) translateY(-10px)', opacity:0 }
+            ], { duration:800, fill:'forwards' }).onfinish = () => s.remove();
+        }, 600);
+    }
+
+    // Apply shiny to existing Pokemon
+    setTimeout(() => {
+        [...pokemons, ...flyers].forEach(pk => {
+            if (Math.random() < SHINY_CHANCE) makeShiny(pk);
+        });
+    }, 3000);
+
+    /* ══════════════════════════════════════════════════════════
+     *  5. DAY/NIGHT CYCLE
+     * ══════════════════════════════════════════════════════════ */
+    const dayNightOverlay = document.createElement('div');
+    dayNightOverlay.id = 'day-night-overlay';
+    Object.assign(dayNightOverlay.style, {
+        position:'fixed', inset:'0', pointerEvents:'none', zIndex:'1',
+        transition:'background 60s linear'
+    });
+    document.body.appendChild(dayNightOverlay);
+
+    function updateDayNight() {
+        const h = new Date().getHours();
+        let bg;
+        if (h >= 6 && h < 10) bg = 'rgba(255,200,100,0.03)';       // Morning
+        else if (h >= 10 && h < 16) bg = 'rgba(255,255,200,0.02)';  // Day
+        else if (h >= 16 && h < 19) bg = 'rgba(255,140,50,0.06)';   // Sunset
+        else if (h >= 19 && h < 21) bg = 'rgba(30,30,80,0.12)';     // Dusk
+        else bg = 'rgba(10,10,40,0.18)';                              // Night
+        dayNightOverlay.style.background = bg;
+    }
+    updateDayNight();
+    setInterval(updateDayNight, 60000);
+
+    /* ══════════════════════════════════════════════════════════
+     *  3. WEATHER SYSTEM
+     * ══════════════════════════════════════════════════════════ */
+    const weatherTypes = ['clear','rain','snow','thunder','leaves'];
+    let currentWeather = 'clear';
+    let weatherInterval = null;
+
+    function setWeather(type) {
+        currentWeather = type;
+        if (weatherInterval) clearInterval(weatherInterval);
+        // Remove old weather label
+        const oldLabel = document.getElementById('weather-label');
+        if (oldLabel) oldLabel.remove();
+
+        if (type === 'clear') return;
+
+        // Weather label
+        const label = document.createElement('div');
+        label.id = 'weather-label';
+        const labels = { rain:'🌧️ Rain', snow:'❄️ Snow', thunder:'⚡ Thunder', leaves:'🍃 Windy' };
+        label.textContent = labels[type] || '';
+        Object.assign(label.style, {
+            position:'fixed', top:'80px', right:'20px',
+            fontFamily:"'Space Grotesk',sans-serif", fontSize:'12px',
+            color:'rgba(255,255,255,0.5)', pointerEvents:'none', zIndex:'50',
+            background:'rgba(0,0,0,0.3)', padding:'4px 10px', borderRadius:'8px',
+            backdropFilter:'blur(4px)'
+        });
+        document.body.appendChild(label);
+        label.animate([{opacity:0},{opacity:1}],{duration:500,fill:'forwards'});
+
+        weatherInterval = setInterval(() => {
+            const p = document.createElement('div');
+            const W = window.innerWidth;
+            if (type === 'rain') {
+                Object.assign(p.style, {
+                    position:'fixed', left:rand(0,W)+'px', top:'-10px',
+                    width:'2px', height:rand(10,20)+'px',
+                    background:'linear-gradient(to bottom, transparent, rgba(100,180,255,0.6))',
+                    pointerEvents:'none', zIndex:'2'
+                });
+                document.body.appendChild(p);
+                p.animate([
+                    {transform:'translateY(0)', opacity:0.7},
+                    {transform:`translateY(${window.innerHeight+20}px)`, opacity:0}
+                ],{duration:rand(500,900), fill:'forwards'}).onfinish=()=>p.remove();
+            } else if (type === 'snow') {
+                p.textContent = pick(['❄','❅','❆','•']);
+                Object.assign(p.style, {
+                    position:'fixed', left:rand(0,W)+'px', top:'-10px',
+                    fontSize:rand(8,16)+'px', color:'rgba(200,220,255,0.7)',
+                    pointerEvents:'none', zIndex:'2'
+                });
+                document.body.appendChild(p);
+                p.animate([
+                    {transform:'translateY(0) rotate(0)', opacity:0.8},
+                    {transform:`translateY(${window.innerHeight+20}px) translateX(${rand(-40,40)}px) rotate(360deg)`, opacity:0}
+                ],{duration:rand(2000,4000), fill:'forwards'}).onfinish=()=>p.remove();
+            } else if (type === 'thunder') {
+                p.textContent = '⚡';
+                Object.assign(p.style, {
+                    position:'fixed', left:rand(0,W)+'px', top:rand(0,200)+'px',
+                    fontSize:rand(16,30)+'px', pointerEvents:'none', zIndex:'2',
+                    filter:'drop-shadow(0 0 8px #FFD700)'
+                });
+                document.body.appendChild(p);
+                p.animate([
+                    {opacity:0, transform:'scale(0.5)'},
+                    {opacity:1, transform:'scale(1.2)', offset:0.1},
+                    {opacity:0, transform:'scale(0.8) translateY(40px)'}
+                ],{duration:rand(300,600), fill:'forwards'}).onfinish=()=>p.remove();
+            } else if (type === 'leaves') {
+                p.textContent = pick(['🍃','🍂','🌿','🍁']);
+                Object.assign(p.style, {
+                    position:'fixed', left:'-20px', top:rand(0,window.innerHeight*0.7)+'px',
+                    fontSize:rand(10,18)+'px', pointerEvents:'none', zIndex:'2'
+                });
+                document.body.appendChild(p);
+                p.animate([
+                    {transform:'translateX(0) rotate(0)', opacity:0.8},
+                    {transform:`translateX(${W+40}px) translateY(${rand(30,100)}px) rotate(${rand(180,720)}deg)`, opacity:0}
+                ],{duration:rand(3000,5000), fill:'forwards'}).onfinish=()=>p.remove();
+            }
+        }, type==='snow'?200 : type==='rain'?50 : type==='thunder'?800 : 300);
+    }
+
+    // Auto-change weather every 30s
+    function randomWeather() {
+        setWeather(pick(weatherTypes));
+    }
+    setTimeout(randomWeather, 5000);
+    setInterval(randomWeather, 30000);
+
+    /* ══════════════════════════════════════════════════════════
+     *  4. POKÉDEX POPUP (on right-click or long press)
+     * ══════════════════════════════════════════════════════════ */
+    function showPokedex(pk) {
+        const existing = document.getElementById('pokedex-popup');
+        if (existing) existing.remove();
+
+        const name = POKEMON_NAMES[pk.id] || `Pokemon #${pk.id}`;
+        const type = POKEMON_TYPES[pk.id] || 'normal';
+        const moveData = MOVE_DATA[type] || MOVE_DATA.normal;
+        const isFlyer = flyers.includes(pk);
+        const shinyTag = pk.isShiny ? ' ✨SHINY✨' : '';
+        const wins = pk._wins || 0;
+
+        const popup = document.createElement('div');
+        popup.id = 'pokedex-popup';
+        popup.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                <img src="${spriteURL(pk.id)}" style="width:64px;height:64px;image-rendering:pixelated;${pk.isShiny?'filter:saturate(1.8) hue-rotate(40deg) brightness(1.15)':''}">
+                <div>
+                    <div style="font-size:18px;font-weight:900;color:#fff">#${pk.id} ${name}${shinyTag}</div>
+                    <div style="display:flex;gap:6px;margin-top:4px">
+                        <span style="background:${moveData.color}30;color:${moveData.color};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid ${moveData.color}40">${moveData.emoji} ${type.toUpperCase()}</span>
+                        ${isFlyer ? '<span style="background:rgba(135,206,235,0.2);color:#87CEEB;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">🕊️ FLYING</span>' : ''}
+                    </div>
+                </div>
+            </div>
+            <div style="font-size:11px;color:#a9abb3;margin-bottom:6px">Moves: ${moveData.moves.join(', ')}</div>
+            <div style="display:flex;gap:12px;font-size:11px;color:#a9abb3">
+                <span>🏆 Wins: <b style="color:#4ECDC4">${wins}</b></span>
+                <span>${pk.isShiny ? '✨ Shiny!' : '⚪ Normal'}</span>
+            </div>
+        `;
+        Object.assign(popup.style, {
+            position:'fixed', left:'50%', top:'50%',
+            transform:'translate(-50%,-50%) scale(0)',
+            background:'rgba(11,14,20,0.95)', border:'1px solid rgba(151,169,255,0.3)',
+            borderRadius:'16px', padding:'16px 20px', zIndex:'10020',
+            fontFamily:"'Space Grotesk',sans-serif",
+            backdropFilter:'blur(20px)', maxWidth:'320px',
+            boxShadow:'0 0 40px rgba(62,101,255,0.15), 0 8px 30px rgba(0,0,0,0.5)'
+        });
+        document.body.appendChild(popup);
+        popup.animate([
+            {transform:'translate(-50%,-50%) scale(0)', opacity:0},
+            {transform:'translate(-50%,-50%) scale(1)', opacity:1}
+        ],{duration:250, easing:'ease-out', fill:'forwards'});
+
+        // Close on click anywhere
+        const closer = (e) => {
+            if (!popup.contains(e.target)) {
+                popup.animate([{opacity:1,transform:'translate(-50%,-50%) scale(1)'},{opacity:0,transform:'translate(-50%,-50%) scale(0.8)'}],
+                    {duration:200,fill:'forwards'}).onfinish=()=>popup.remove();
+                document.removeEventListener('click', closer);
+                document.removeEventListener('contextmenu', closer);
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener('click', closer);
+            document.addEventListener('contextmenu', closer);
+        }, 100);
+    }
+
+    // Right-click on Pokemon = Pokédex
+    container.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const cx = e.clientX, cy = e.clientY;
+        const target = findNearest(cx, cy);
+        if (target) showPokedex(target.ref);
+    });
+
+    /* ══════════════════════════════════════════════════════════
+     *  6. POKEMON EGG
+     * ══════════════════════════════════════════════════════════ */
+    let eggActive = false;
+    function spawnEgg() {
+        if (eggActive) return;
+        eggActive = true;
+        const egg = document.createElement('div');
+        egg.id = 'pokemon-egg';
+        egg.textContent = '🥚';
+        let clicks = 0;
+        const needed = 5 + Math.floor(Math.random()*5);
+        Object.assign(egg.style, {
+            position:'absolute', fontSize:'32px', cursor:'pointer',
+            left: rand(10, window.innerWidth-60)+'px',
+            bottom: (GROUND_OFFSET+5)+'px',
+            pointerEvents:'auto', zIndex:'10001',
+            filter:'drop-shadow(0 0 8px rgba(255,215,0,0.4))',
+            transition:'transform 0.2s'
+        });
+        container.appendChild(egg);
+        egg.animate([{opacity:0,transform:'scale(0)'},{opacity:1,transform:'scale(1)'}],
+            {duration:500,easing:'ease-out',fill:'forwards'});
+
+        egg.addEventListener('click', () => {
+            clicks++;
+            egg.animate([
+                {transform:'rotate(0) scale(1)'},
+                {transform:`rotate(${rand(-20,20)}deg) scale(1.1)`, offset:0.3},
+                {transform:'rotate(0) scale(1)'}
+            ],{duration:300});
+            // Crack particles
+            for(let i=0;i<3;i++){
+                const c = document.createElement('div');
+                c.textContent = '✦';
+                Object.assign(c.style,{
+                    position:'absolute', left:egg.style.left, bottom:egg.style.bottom,
+                    fontSize:'10px', color:'#FFD700', pointerEvents:'none', zIndex:'10002'
+                });
+                container.appendChild(c);
+                c.animate([{opacity:1,transform:`translate(${rand(-15,15)}px,${rand(-20,0)}px)`},{opacity:0,transform:`translate(${rand(-25,25)}px,${-rand(20,40)}px)`}],
+                    {duration:400,fill:'forwards'}).onfinish=()=>c.remove();
+            }
+
+            if (clicks >= needed) {
+                // HATCH!
+                egg.textContent = '💫';
+                egg.animate([{transform:'scale(1.5)',opacity:1},{transform:'scale(3)',opacity:0}],
+                    {duration:500,fill:'forwards'}).onfinish=()=>{
+                    egg.remove();
+                    // Burst effect
+                    for(let i=0;i<10;i++){
+                        const s=document.createElement('div');
+                        s.textContent=pick(['✨','⭐','💫','🌟']);
+                        const ex=parseFloat(egg.style.left), ey=window.innerHeight-GROUND_OFFSET-30;
+                        Object.assign(s.style,{position:'absolute',left:ex+'px',top:ey+'px',fontSize:rand(10,18)+'px',pointerEvents:'none',zIndex:'10002'});
+                        container.appendChild(s);
+                        const a=(Math.PI*2/10)*i, d=rand(30,60);
+                        s.animate([{transform:'scale(1)',opacity:1},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d}px) scale(0)`,opacity:0}],
+                            {duration:600,fill:'forwards'}).onfinish=()=>s.remove();
+                    }
+                    spawnNewPokemon();
+                    eggActive = false;
+                };
+            }
+        });
+    }
+    // Spawn egg every 45s
+    setTimeout(spawnEgg, 15000);
+    setInterval(() => { if(!eggActive) spawnEgg(); }, 45000);
+
+    /* ══════════════════════════════════════════════════════════
+     *  7. EVOLUTION SYSTEM (3 wins = evolve)
+     * ══════════════════════════════════════════════════════════ */
+    const EVOLUTION_MAP = {
+        1:2, 2:3, 4:5, 5:6, 7:8, 8:9, 25:26, 133:136, 155:156,
+        158:159, 172:25, 175:176, 179:180, 252:253, 255:256,
+        258:259, 387:388, 390:391, 393:394, 447:448, 495:496,
+        498:499, 501:502, 650:651, 653:654, 656:657, 63:64,
+        92:93, 147:148, 246:247, 371:372, 443:444, 570:571,
+        607:608, 280:281, 403:404, 661:662
+    };
+
+    function tryEvolve(pk) {
+        pk._wins = (pk._wins || 0) + 1;
+        saveScoreboard(pk);
+        if (pk._wins >= 3 && EVOLUTION_MAP[pk.id]) {
+            const newId = EVOLUTION_MAP[pk.id];
+            // Evolution flash
+            pk.img.animate([
+                {filter:'brightness(1)'},
+                {filter:'brightness(5) saturate(0)', offset:0.3},
+                {filter:'brightness(8)', offset:0.6},
+                {filter:'brightness(1)'}
+            ],{duration:1200, easing:'ease-in-out'});
+
+            const flash = document.createElement('div');
+            flash.textContent = '⬆️ EVOLVED!';
+            Object.assign(flash.style, {
+                position:'absolute', top:'-25px', left:'50%',
+                transform:'translateX(-50%)', fontFamily:"'Space Grotesk'",
+                fontSize:'12px', fontWeight:'900', color:'#FFD700',
+                textShadow:'0 0 10px #FFD700', pointerEvents:'none',
+                zIndex:'10015', whiteSpace:'nowrap'
+            });
+            pk.el.appendChild(flash);
+            flash.animate([
+                {opacity:0,transform:'translateX(-50%) translateY(0) scale(0)'},
+                {opacity:1,transform:'translateX(-50%) translateY(-10px) scale(1.2)', offset:0.3},
+                {opacity:0,transform:'translateX(-50%) translateY(-25px) scale(0.8)'}
+            ],{duration:1500,fill:'forwards'}).onfinish=()=>flash.remove();
+
+            setTimeout(() => {
+                pk.id = newId;
+                pk.img.src = spriteURL(newId);
+                pk._wins = 0;
+                // reset filter after evolution
+            }, 600);
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════
+     *  8. BATTLE SCOREBOARD (localStorage)
+     * ══════════════════════════════════════════════════════════ */
+    let scoreboard = JSON.parse(localStorage.getItem('pkScoreboard') || '{}');
+
+    function saveScoreboard(pk) {
+        const key = pk.id;
+        if (!scoreboard[key]) scoreboard[key] = { wins:0, name: POKEMON_NAMES[key]||`#${key}` };
+        scoreboard[key].wins = (pk._wins || 0);
+        localStorage.setItem('pkScoreboard', JSON.stringify(scoreboard));
+        renderScoreboard();
+    }
+
+    const sbPanel = document.createElement('div');
+    sbPanel.id = 'scoreboard';
+    Object.assign(sbPanel.style, {
+        position:'fixed', bottom:'12px', left:'12px',
+        background:'rgba(11,14,20,0.85)', border:'1px solid rgba(255,255,255,0.08)',
+        borderRadius:'12px', padding:'8px 12px', zIndex:'10016',
+        fontFamily:"'Space Grotesk',sans-serif", fontSize:'11px',
+        color:'#a9abb3', maxWidth:'160px', backdropFilter:'blur(8px)',
+        pointerEvents:'auto', transition:'opacity 0.3s'
+    });
+    document.body.appendChild(sbPanel);
+
+    function renderScoreboard() {
+        const top5 = Object.entries(scoreboard)
+            .sort((a,b) => b[1].wins - a[1].wins)
+            .slice(0, 5);
+        if (top5.length === 0) { sbPanel.style.opacity='0'; return; }
+        sbPanel.style.opacity='1';
+        sbPanel.innerHTML = '<div style="font-weight:800;color:#FFD700;margin-bottom:4px;font-size:10px">🏆 TOP FIGHTERS</div>' +
+            top5.map(([id,d],i) =>
+                `<div style="display:flex;justify-content:space-between;gap:8px;padding:1px 0"><span>${['🥇','🥈','🥉','4.','5.'][i]} ${d.name}</span><span style="color:#4ECDC4">${d.wins}W</span></div>`
+            ).join('');
+    }
+    renderScoreboard();
+
+    /* ══════════════════════════════════════════════════════════
+     *  9. POKEMON FOLLOWS CURSOR
+     * ══════════════════════════════════════════════════════════ */
+    const follower = document.createElement('div');
+    const followerId = pick([25, 133, 175, 39, 172]); // Cute Pokemon pool
+    const followerImg = document.createElement('img');
+    followerImg.src = spriteURL(followerId);
+    followerImg.style.cssText = 'width:36px;height:36px;image-rendering:pixelated;';
+    follower.appendChild(followerImg);
+    Object.assign(follower.style, {
+        position:'fixed', pointerEvents:'none', zIndex:'10003',
+        transition:'left 0.3s ease-out, top 0.3s ease-out',
+        filter:'drop-shadow(0 2px 4px rgba(0,0,0,0.4))', opacity:'0.8'
+    });
+    document.body.appendChild(follower);
+
+    let mouseX = window.innerWidth/2, mouseY = window.innerHeight/2;
+    let followerX = mouseX, followerY = mouseY;
+    let followerFacing = true;
+    document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+
+    function updateFollower() {
+        const dx = mouseX - followerX - 18;
+        const dy = mouseY - followerY - 18;
+        followerX += dx * 0.08;
+        followerY += dy * 0.08;
+        const newFacing = dx > 0;
+        if (newFacing !== followerFacing) {
+            followerFacing = newFacing;
+            followerImg.style.transform = `scaleX(${followerFacing ? 1 : -1})`;
+        }
+        follower.style.left = followerX + 'px';
+        follower.style.top = followerY + 'px';
+        requestAnimationFrame(updateFollower);
+    }
+    requestAnimationFrame(updateFollower);
+
+    // ── Hook evolution into finishBattle ──
+    const _origFinishBattle = finishBattle;
+    finishBattle = function(pkA, pkB) {
+        const aWins = pkA._hp > pkB._hp;
+        const winner = aWins ? pkA : pkB;
+        tryEvolve(winner);
+        _origFinishBattle(pkA, pkB);
+    };
+
+    /* ── EXPOSE GLOBALS for pokemon-extras.js ─────────────── */
+    window.__pkWorld = {
+        pokemons, flyers, container, POKEMON_TYPES, POKEMON_NAMES,
+        SPRITE_SIZE, FLYER_SIZE, GROUND_OFFSET, FLYING_IDS,
+        ALL_POKEMON_IDS, MOVE_DATA,
+        rand, pick, spriteURL,
+        Pokemon, FlyingPokemon
+    };
+    window.__pkStartBattle = startHomeBattle;
+    window.__pkSaveScore = saveScoreboard;
 
     /* ── CSS (injected) ───────────────────────────────────── */
     const style = document.createElement('style');
